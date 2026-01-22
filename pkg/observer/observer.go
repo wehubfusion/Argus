@@ -292,6 +292,14 @@ func (o *observer) Close(ctx context.Context) error {
 		close(o.eventChan)
 
 		// Wait for worker to finish with timeout
+		// Use context timeout if provided, otherwise use a default timeout
+		closeCtx := ctx
+		if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+			var cancel context.CancelFunc
+			closeCtx, cancel = context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+		}
+
 		done := make(chan struct{})
 		go func() {
 			o.wg.Wait()
@@ -301,13 +309,10 @@ func (o *observer) Close(ctx context.Context) error {
 		select {
 		case <-done:
 			o.logger.Info("Observer closed gracefully")
-		case <-ctx.Done():
-			closeErr = fmt.Errorf("close timeout: %w", ctx.Err())
+		case <-closeCtx.Done():
+			closeErr = fmt.Errorf("close timeout: %w", closeCtx.Err())
 			o.logger.Warn("Observer close timeout",
-				zap.Error(ctx.Err()))
-		case <-time.After(30 * time.Second):
-			closeErr = fmt.Errorf("close timeout after 30 seconds")
-			o.logger.Warn("Observer close timeout after 30 seconds")
+				zap.Error(closeCtx.Err()))
 		}
 	})
 

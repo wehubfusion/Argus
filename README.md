@@ -2,7 +2,7 @@
 
 **Argus** is a lightweight Go SDK for emitting **workflow and execution observation events** to **NATS JetStream**.
 
-It is designed to be used by orchestrators (such as Zeus) to publish **execution facts**—run lifecycle, node/plugin lifecycle, and execution payload references—without coupling producers to monitoring storage or UI concerns.
+It is designed to be used by orchestrators and workflow engines to publish **execution facts**—run lifecycle, node/plugin lifecycle, and execution payload references—without coupling producers to monitoring storage or UI concerns.
 
 Argus focuses on **observation, not aggregation**.
 

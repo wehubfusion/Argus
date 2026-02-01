@@ -9,13 +9,11 @@ import (
 
 // Event type constants
 const (
-	TypeWorkflowPublished   = "workflow.published"
-	TypeWorkflowUnpublished = "workflow.unpublished"
-	TypeWorkflowHealth      = "workflow.health.changed"
-	TypeRunStarted          = "run.started"
-	TypeRunEnded            = "run.ended"
-	TypePluginStarted       = "plugin.started"
-	TypePluginEnded         = "plugin.ended"
+	TypeWorkflowPublished = "workflow.published"
+	TypeRunStarted        = "run.started"
+	TypeRunEnded          = "run.ended"
+	TypePluginStarted     = "plugin.started"
+	TypePluginEnded       = "plugin.ended"
 )
 
 // Event is the universal observation event structure.
@@ -142,7 +140,7 @@ func (e *Event) Validate() error {
 
 	// Level-based validation
 	switch e.Type {
-	case TypeWorkflowPublished, TypeWorkflowUnpublished, TypeWorkflowHealth:
+	case TypeWorkflowPublished:
 		if e.WorkflowID == "" {
 			return ErrMissingWorkflowID
 		}
@@ -175,27 +173,75 @@ func (e *Event) Validate() error {
 // Event producers use these to create type-safe data.
 // Event consumers use these to parse data.
 
+// WorkflowPublishedData is the data payload for workflow.published events.
+type WorkflowPublishedData struct {
+	WorkflowID   string    `json:"workflow_id"`
+	ClientID     string    `json:"client_id"`
+	Action       string    `json:"action"` // "publish" | "unpublish" | "health_changed" | "count_changed"
+	QueueLength  int       `json:"queue_length,omitempty"`
+	SuccessCount int       `json:"success_count,omitempty"`
+	ErrorCount   int       `json:"error_count,omitempty"`
+	PublishedAt  time.Time `json:"published_at"`
+}
+
 // RunStartedData is the data payload for run.started events.
 type RunStartedData struct {
-	// TODO: Add fields here
+	RunID       string       `json:"run_id"`
+	TotalNodes  int          `json:"total_nodes"`
+	QueueLength int          `json:"queue_length,omitempty"`
+	StartedAt   time.Time    `json:"started_at"`
+	TriggerInfo *TriggerInfo `json:"trigger_info"`
+}
+
+// TriggerInfo contains trigger metadata for run.started events.
+type TriggerInfo struct {
+	Type     string `json:"type"` // "http", "manual", "scheduled", "unknown"
+	HasData  bool   `json:"has_data"`
+	DataSize int    `json:"data_size,omitempty"` // Bytes
+	BlobURL  string `json:"blob_url,omitempty"`  // If trigger data in blob
 }
 
 // RunEndedData is the data payload for run.ended events.
 type RunEndedData struct {
-	// TODO: Add fields here
+	RunID        string    `json:"run_id"`
+	Status       string    `json:"status"` // "success", "failed"
+	TotalNodes   int       `json:"total_nodes"`
+	SuccessNodes int       `json:"success_nodes"`
+	FailedNodes  int       `json:"failed_nodes"`
+	SkippedNodes int       `json:"skipped_nodes"`
+	QueueLength  int       `json:"queue_length,omitempty"`
+	EndedAt      time.Time `json:"ended_at"`
 }
 
 // PluginStartedData is the data payload for plugin.started events.
 type PluginStartedData struct {
-	// TODO: Add fields here
+	ExecutionID    string       `json:"execution_id"`
+	PluginType     string       `json:"plugin_type"`
+	Label          string       `json:"label"`
+	ExecutionOrder int          `json:"execution_order"`
+	StartedAt      int64        `json:"started_at"`
+	InputPayload   *PayloadInfo `json:"input_payload,omitempty"`
 }
 
 // PluginEndedData is the data payload for plugin.ended events.
 type PluginEndedData struct {
-	// TODO: Add fields here
+	NodeID        string       `json:"node_id"`
+	ExecutionID   string       `json:"execution_id"`
+	Status        string       `json:"status"` // "success", "failed", "skipped"
+	EndedAt       int64        `json:"ended_at"`
+	OutputPayload *PayloadInfo `json:"output_payload,omitempty"`
+	HasError      bool         `json:"has_error"`
+	ErrorMessage  string       `json:"error_message,omitempty"`
 }
 
-// WorkflowHealthData is the data payload for workflow.health.changed events.
-type WorkflowHealthData struct {
-	// TODO: Add fields here
+// PayloadInfo represents payload data (inline or blob reference).
+type PayloadInfo struct {
+	InlineData    json.RawMessage `json:"inline_data,omitempty"`
+	BlobReference *BlobRef        `json:"blob_reference,omitempty"`
+}
+
+// BlobRef represents a blob storage reference.
+type BlobRef struct {
+	URL       string `json:"url"`
+	SizeBytes int64  `json:"size_bytes"`
 }

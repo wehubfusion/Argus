@@ -10,16 +10,14 @@ const (
 	// Subject prefix for all observation events
 	SubjectPrefix = "OBSERVE"
 
-	// Workflow catalog events (Level 1)
-	SubjectWorkflowPublished     = "OBSERVE.WORKFLOW.PUBLISHED"
-	SubjectWorkflowUnpublished   = "OBSERVE.WORKFLOW.UNPUBLISHED"
-	SubjectWorkflowHealthChanged = "OBSERVE.WORKFLOW.HEALTH"
+	// Workflow catalog events
+	SubjectWorkflowPublished = "OBSERVE.WORKFLOW.PUBLISHED"
 
-	// Run lifecycle events (Level 2)
+	// Run lifecycle events
 	SubjectRunStarted = "OBSERVE.RUN.STARTED"
 	SubjectRunEnded   = "OBSERVE.RUN.ENDED"
 
-	// Plugin lifecycle events (Level 3)
+	// Plugin lifecycle events
 	SubjectPluginStarted = "OBSERVE.PLUGIN.STARTED"
 	SubjectPluginEnded   = "OBSERVE.PLUGIN.ENDED"
 )
@@ -29,10 +27,6 @@ func GetSubjectForEventType(eventType string) string {
 	switch eventType {
 	case event.TypeWorkflowPublished:
 		return SubjectWorkflowPublished
-	case event.TypeWorkflowUnpublished:
-		return SubjectWorkflowUnpublished
-	case event.TypeWorkflowHealth:
-		return SubjectWorkflowHealthChanged
 	case event.TypeRunStarted:
 		return SubjectRunStarted
 	case event.TypeRunEnded:

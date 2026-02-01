@@ -106,9 +106,7 @@ Argus emits structured observation events organized by hierarchy:
 ### Event Types
 
 **Level 1 - Workflow Catalog:**
-* `workflow.published` - Workflow published to catalog
-* `workflow.unpublished` - Workflow removed from catalog
-* `workflow.health.changed` - Workflow health status changed
+* `workflow.published` - Workflow publish/unpublish lifecycle (use `Action` in data: `"publish"` | `"unpublish"`)
 
 **Level 2 - Run Lifecycle:**
 * `run.started` - Workflow run started
@@ -285,9 +283,7 @@ This design ensures:
 
 Events are published to NATS JetStream subjects:
 
-* `OBSERVE.WORKFLOW.PUBLISHED`
-* `OBSERVE.WORKFLOW.UNPUBLISHED`
-* `OBSERVE.WORKFLOW.HEALTH`
+* `OBSERVE.WORKFLOW.PUBLISHED` (includes Action: "publish" | "unpublish" in data)
 * `OBSERVE.RUN.STARTED`
 * `OBSERVE.RUN.ENDED`
 * `OBSERVE.PLUGIN.STARTED`

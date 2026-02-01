@@ -177,7 +177,8 @@ func (e *Event) Validate() error {
 type WorkflowPublishedData struct {
 	WorkflowID   string    `json:"workflow_id"`
 	ClientID     string    `json:"client_id"`
-	Action       string    `json:"action"` // "publish" | "unpublish" | "health_changed" | "count_changed"
+	Action       string    `json:"action"`                  // "publish" | "unpublish" | "health_changed" | "count_changed"
+	HealthStatus string    `json:"health_status,omitempty"` // "unknown" | "healthy" | "unhealthy"
 	QueueLength  int       `json:"queue_length,omitempty"`
 	SuccessCount int       `json:"success_count,omitempty"`
 	ErrorCount   int       `json:"error_count,omitempty"`

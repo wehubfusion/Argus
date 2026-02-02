@@ -14,12 +14,12 @@ const (
 	SubjectWorkflowPublished = "OBSERVE.WORKFLOW.PUBLISHED"
 
 	// Run lifecycle events
-	SubjectRunStarted = "OBSERVE.RUN.STARTED"
-	SubjectRunEnded   = "OBSERVE.RUN.ENDED"
+	SubjectRunStarted = "OBSERVE.WORKFLOW.RUN.STARTED"
+	SubjectRunEnded   = "OBSERVE.WORKFLOW.RUN.ENDED"
 
 	// Plugin lifecycle events
-	SubjectPluginStarted = "OBSERVE.PLUGIN.STARTED"
-	SubjectPluginEnded   = "OBSERVE.PLUGIN.ENDED"
+	SubjectPluginStarted = "OBSERVE.WORKFLOW.PLUGIN.STARTED"
+	SubjectPluginEnded   = "OBSERVE.WORKFLOW.PLUGIN.ENDED"
 )
 
 // GetSubjectForEventType returns the NATS subject for a given event type

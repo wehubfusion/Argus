@@ -174,23 +174,20 @@ func (e *Event) Validate() error {
 // Event consumers use these to parse data.
 
 // WorkflowPublishedData is the data payload for workflow.published events.
+// client_id and workflow_id are on the event envelope; timestamp is event.Timestamp.
 type WorkflowPublishedData struct {
-	WorkflowID   string    `json:"workflow_id"`
-	ClientID     string    `json:"client_id"`
-	Action       string    `json:"action"`                  // "publish" | "unpublish" | "health_changed" | "count_changed"
-	HealthStatus string    `json:"health_status,omitempty"` // "unknown" | "healthy" | "unhealthy"
-	QueueLength  int       `json:"queue_length,omitempty"`
-	SuccessCount int       `json:"success_count,omitempty"`
-	ErrorCount   int       `json:"error_count,omitempty"`
-	PublishedAt  time.Time `json:"published_at"`
+	Action       string `json:"action"`                  // "publish" | "unpublish"
+	HealthStatus string `json:"health_status,omitempty"` // "unknown" | "healthy" | "unhealthy"
+	QueueLength  int    `json:"queue_length,omitempty"`
+	SuccessCount int    `json:"success_count,omitempty"`
+	ErrorCount   int    `json:"error_count,omitempty"`
 }
 
 // RunStartedData is the data payload for run.started events.
+// run_id is on the event envelope; timestamp is event.Timestamp.
 type RunStartedData struct {
-	RunID       string       `json:"run_id"`
 	TotalNodes  int          `json:"total_nodes"`
 	QueueLength int          `json:"queue_length,omitempty"`
-	StartedAt   time.Time    `json:"started_at"`
 	TriggerInfo *TriggerInfo `json:"trigger_info"`
 }
 
@@ -203,15 +200,14 @@ type TriggerInfo struct {
 }
 
 // RunEndedData is the data payload for run.ended events.
+// run_id is on the event envelope; timestamp is event.Timestamp.
 type RunEndedData struct {
-	RunID        string    `json:"run_id"`
-	Status       string    `json:"status"` // "success", "failed"
-	TotalNodes   int       `json:"total_nodes"`
-	SuccessNodes int       `json:"success_nodes"`
-	FailedNodes  int       `json:"failed_nodes"`
-	SkippedNodes int       `json:"skipped_nodes"`
-	QueueLength  int       `json:"queue_length,omitempty"`
-	EndedAt      time.Time `json:"ended_at"`
+	Status       string `json:"status"` // "success", "failed"
+	TotalNodes   int    `json:"total_nodes"`
+	SuccessNodes int    `json:"success_nodes"`
+	FailedNodes  int    `json:"failed_nodes"`
+	SkippedNodes int    `json:"skipped_nodes"`
+	QueueLength  int    `json:"queue_length,omitempty"`
 }
 
 // PluginStartedData is the data payload for plugin.started events.
@@ -225,11 +221,11 @@ type PluginStartedData struct {
 }
 
 // PluginEndedData is the data payload for plugin.ended events.
+// node_id is on the event envelope.
 type PluginEndedData struct {
-	NodeID        string       `json:"node_id"`
 	ExecutionID   string       `json:"execution_id"`
-	Status        string       `json:"status"` // "success", "failed", "skipped"
-	EndedAt       int64        `json:"ended_at"`
+	Status        string       `json:"status"`   // "success", "failed", "skipped"
+	EndedAt       int64        `json:"ended_at"` // Unix timestamp for precision
 	OutputPayload *PayloadInfo `json:"output_payload,omitempty"`
 	HasError      bool         `json:"has_error"`
 	ErrorMessage  string       `json:"error_message,omitempty"`

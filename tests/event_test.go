@@ -336,10 +336,8 @@ func TestEventSerialization(t *testing.T) {
 
 func TestWithData_WorkflowPublishedData(t *testing.T) {
 	data := &event.WorkflowPublishedData{
-		WorkflowID:   "wf_123",
-		ClientID:     "org_456",
-		PublishedAt:  time.Now(),
 		Action:       "publish",
+		HealthStatus: "unknown",
 		QueueLength:  10,
 		SuccessCount: 100,
 		ErrorCount:   5,
@@ -358,22 +356,20 @@ func TestWithData_WorkflowPublishedData(t *testing.T) {
 	if err := evt.ParseData(&parsed); err != nil {
 		t.Fatalf("Failed to parse data: %v", err)
 	}
-	if parsed.WorkflowID != data.WorkflowID {
-		t.Errorf("Expected workflow_id %s, got %s", data.WorkflowID, parsed.WorkflowID)
+	if parsed.Action != data.Action {
+		t.Errorf("Expected action %s, got %s", data.Action, parsed.Action)
 	}
-	if parsed.ClientID != data.ClientID {
-		t.Errorf("Expected client_id %s, got %s", data.ClientID, parsed.ClientID)
+	if parsed.HealthStatus != data.HealthStatus {
+		t.Errorf("Expected health_status %s, got %s", data.HealthStatus, parsed.HealthStatus)
 	}
-	if !parsed.PublishedAt.Equal(data.PublishedAt) {
-		t.Errorf("Expected published_at %v, got %v", data.PublishedAt, parsed.PublishedAt)
+	if parsed.QueueLength != data.QueueLength {
+		t.Errorf("Expected queue_length %d, got %d", data.QueueLength, parsed.QueueLength)
 	}
 }
 
 func TestWithData_RunStartedData(t *testing.T) {
 	data := &event.RunStartedData{
-		RunID:      "run_xyz",
 		TotalNodes: 10,
-		StartedAt:  time.Now(),
 		TriggerInfo: &event.TriggerInfo{
 			Type:     "http",
 			HasData:  true,
@@ -399,14 +395,12 @@ func TestWithData_RunStartedData(t *testing.T) {
 
 func TestWithData_RunEndedData(t *testing.T) {
 	data := &event.RunEndedData{
-		RunID:        "run_xyz",
 		Status:       "success",
 		TotalNodes:   10,
 		SuccessNodes: 8,
 		FailedNodes:  0,
 		SkippedNodes: 2,
 		QueueLength:  5,
-		EndedAt:      time.Now(),
 	}
 
 	evt := event.New(event.TypeRunEnded).
@@ -500,10 +494,8 @@ func TestWithData_PluginEndedData(t *testing.T) {
 
 func TestWithData_WorkflowHealthData(t *testing.T) {
 	data := &event.WorkflowPublishedData{
-		WorkflowID:   "wf_123",
-		ClientID:     "org_456",
-		PublishedAt:  time.Now(),
 		Action:       "publish",
+		HealthStatus: "unknown",
 		QueueLength:  10,
 		SuccessCount: 100,
 		ErrorCount:   5,
@@ -517,15 +509,6 @@ func TestWithData_WorkflowHealthData(t *testing.T) {
 	var parsed event.WorkflowPublishedData
 	if err := evt.ParseData(&parsed); err != nil {
 		t.Fatalf("Failed to parse data: %v", err)
-	}
-	if parsed.WorkflowID != data.WorkflowID {
-		t.Errorf("Expected workflow_id %s, got %s", data.WorkflowID, parsed.WorkflowID)
-	}
-	if parsed.ClientID != data.ClientID {
-		t.Errorf("Expected client_id %s, got %s", data.ClientID, parsed.ClientID)
-	}
-	if !parsed.PublishedAt.Equal(data.PublishedAt) {
-		t.Errorf("Expected published_at %v, got %v", data.PublishedAt, parsed.PublishedAt)
 	}
 	if parsed.Action != data.Action {
 		t.Errorf("Expected action %s, got %s", data.Action, parsed.Action)
@@ -544,9 +527,7 @@ func TestWithData_WorkflowHealthData(t *testing.T) {
 func TestDataSchema_RoundTripSerialization(t *testing.T) {
 	// Test full round-trip: create event with typed data, serialize to JSON, deserialize, parse data
 	data := &event.RunStartedData{
-		RunID:      "run_xyz",
 		TotalNodes: 5,
-		StartedAt:  time.Now(),
 		TriggerInfo: &event.TriggerInfo{
 			Type:     "manual",
 			HasData:  false,

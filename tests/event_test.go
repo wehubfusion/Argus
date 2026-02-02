@@ -337,7 +337,6 @@ func TestEventSerialization(t *testing.T) {
 func TestWithData_WorkflowPublishedData(t *testing.T) {
 	data := &event.WorkflowPublishedData{
 		Action:       "publish",
-		HealthStatus: "unknown",
 		QueueLength:  10,
 		SuccessCount: 100,
 		ErrorCount:   5,
@@ -358,9 +357,6 @@ func TestWithData_WorkflowPublishedData(t *testing.T) {
 	}
 	if parsed.Action != data.Action {
 		t.Errorf("Expected action %s, got %s", data.Action, parsed.Action)
-	}
-	if parsed.HealthStatus != data.HealthStatus {
-		t.Errorf("Expected health_status %s, got %s", data.HealthStatus, parsed.HealthStatus)
 	}
 	if parsed.QueueLength != data.QueueLength {
 		t.Errorf("Expected queue_length %d, got %d", data.QueueLength, parsed.QueueLength)
@@ -495,7 +491,6 @@ func TestWithData_PluginEndedData(t *testing.T) {
 func TestWithData_WorkflowHealthData(t *testing.T) {
 	data := &event.WorkflowPublishedData{
 		Action:       "publish",
-		HealthStatus: "unknown",
 		QueueLength:  10,
 		SuccessCount: 100,
 		ErrorCount:   5,

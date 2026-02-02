@@ -177,7 +177,6 @@ func (e *Event) Validate() error {
 // client_id and workflow_id are on the event envelope; timestamp is event.Timestamp.
 type WorkflowPublishedData struct {
 	Action       string `json:"action"`                  // "publish" | "unpublish"
-	HealthStatus string `json:"health_status,omitempty"` // "unknown" | "healthy" | "unhealthy"
 	QueueLength  int    `json:"queue_length,omitempty"`
 	SuccessCount int    `json:"success_count,omitempty"`
 	ErrorCount   int    `json:"error_count,omitempty"`

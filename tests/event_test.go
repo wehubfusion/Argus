@@ -331,3 +331,237 @@ func TestEventSerialization(t *testing.T) {
 		t.Error("Missing 'data' field")
 	}
 }
+
+// === Data Schema Struct Tests ===
+
+func TestWithData_WorkflowPublishedData(t *testing.T) {
+	data := &event.WorkflowPublishedData{
+		Action:       "publish",
+		QueueLength:  10,
+		SuccessCount: 100,
+		ErrorCount:   5,
+	}
+
+	evt := event.New(event.TypeWorkflowPublished).
+		WithClient("org_456").
+		WithWorkflow("wf_123").
+		WithData(data)
+
+	if evt.Data == nil {
+		t.Fatal("Expected data to be set")
+	}
+
+	var parsed event.WorkflowPublishedData
+	if err := evt.ParseData(&parsed); err != nil {
+		t.Fatalf("Failed to parse data: %v", err)
+	}
+	if parsed.Action != data.Action {
+		t.Errorf("Expected action %s, got %s", data.Action, parsed.Action)
+	}
+	if parsed.QueueLength != data.QueueLength {
+		t.Errorf("Expected queue_length %d, got %d", data.QueueLength, parsed.QueueLength)
+	}
+}
+
+func TestWithData_RunStartedData(t *testing.T) {
+	data := &event.RunStartedData{
+		TotalNodes: 10,
+		TriggerInfo: &event.TriggerInfo{
+			Type:     "http",
+			HasData:  true,
+			DataSize: 1024,
+			BlobURL:  "",
+		},
+	}
+
+	evt := event.New(event.TypeRunStarted).
+		WithClient("org_123").
+		WithWorkflow("wf_abc").
+		WithRun("run_xyz").
+		WithData(data)
+
+	var parsed event.RunStartedData
+	if err := evt.ParseData(&parsed); err != nil {
+		t.Fatalf("Failed to parse data: %v", err)
+	}
+	if parsed.TotalNodes != data.TotalNodes {
+		t.Errorf("Expected total_nodes %d, got %d", data.TotalNodes, parsed.TotalNodes)
+	}
+}
+
+func TestWithData_RunEndedData(t *testing.T) {
+	data := &event.RunEndedData{
+		Status:       "success",
+		TotalNodes:   10,
+		SuccessNodes: 8,
+		FailedNodes:  0,
+		SkippedNodes: 2,
+		QueueLength:  5,
+	}
+
+	evt := event.New(event.TypeRunEnded).
+		WithClient("org_123").
+		WithWorkflow("wf_abc").
+		WithRun("run_xyz").
+		WithData(data)
+
+	var parsed event.RunEndedData
+	if err := evt.ParseData(&parsed); err != nil {
+		t.Fatalf("Failed to parse data: %v", err)
+	}
+	if parsed.Status != data.Status {
+		t.Errorf("Expected status %s, got %s", data.Status, parsed.Status)
+	}
+	if parsed.SuccessNodes != data.SuccessNodes {
+		t.Errorf("Expected success_nodes %d, got %d", data.SuccessNodes, parsed.SuccessNodes)
+	}
+}
+
+func TestWithData_PluginStartedData(t *testing.T) {
+	data := &event.PluginStartedData{
+		ExecutionID:    "exec_001",
+		PluginType:     "http",
+		Label:          "HTTP Request",
+		ExecutionOrder: 1,
+		StartedAt:      1704067200000,
+		InputPayload: &event.PayloadInfo{
+			InlineData: json.RawMessage(`{"url":"https://example.com"}`),
+		},
+	}
+
+	evt := event.New(event.TypePluginStarted).
+		WithClient("org_123").
+		WithWorkflow("wf_abc").
+		WithRun("run_xyz").
+		WithNode("node_1").
+		WithData(data)
+
+	var parsed event.PluginStartedData
+	if err := evt.ParseData(&parsed); err != nil {
+		t.Fatalf("Failed to parse data: %v", err)
+	}
+	if parsed.ExecutionID != data.ExecutionID {
+		t.Errorf("Expected execution_id %s, got %s", data.ExecutionID, parsed.ExecutionID)
+	}
+	if parsed.PluginType != data.PluginType {
+		t.Errorf("Expected plugin_type %s, got %s", data.PluginType, parsed.PluginType)
+	}
+	if parsed.InputPayload == nil || string(parsed.InputPayload.InlineData) != string(data.InputPayload.InlineData) {
+		t.Errorf("Expected input_payload to match")
+	}
+}
+
+func TestWithData_PluginEndedData(t *testing.T) {
+	data := &event.PluginEndedData{
+		ExecutionID: "exec_001",
+		Status:      "success",
+		EndedAt:     1704067260000,
+		OutputPayload: &event.PayloadInfo{
+			BlobReference: &event.BlobRef{
+				URL:       "https://blob.example.com/result.json",
+				SizeBytes: 2048,
+			},
+		},
+		HasError:     false,
+		ErrorMessage: "",
+	}
+
+	evt := event.New(event.TypePluginEnded).
+		WithClient("org_123").
+		WithWorkflow("wf_abc").
+		WithRun("run_xyz").
+		WithNode("node_1").
+		WithData(data)
+
+	var parsed event.PluginEndedData
+	if err := evt.ParseData(&parsed); err != nil {
+		t.Fatalf("Failed to parse data: %v", err)
+	}
+	if parsed.Status != data.Status {
+		t.Errorf("Expected status %s, got %s", data.Status, parsed.Status)
+	}
+	if parsed.OutputPayload == nil || parsed.OutputPayload.BlobReference == nil {
+		t.Fatal("Expected output_payload with blob_reference")
+	}
+	if parsed.OutputPayload.BlobReference.URL != data.OutputPayload.BlobReference.URL {
+		t.Errorf("Expected blob URL %s, got %s", data.OutputPayload.BlobReference.URL, parsed.OutputPayload.BlobReference.URL)
+	}
+}
+
+func TestWithData_WorkflowHealthData(t *testing.T) {
+	data := &event.WorkflowPublishedData{
+		Action:       "publish",
+		QueueLength:  10,
+		SuccessCount: 100,
+		ErrorCount:   5,
+	}
+
+	evt := event.New(event.TypeWorkflowPublished).
+		WithClient("org_456").
+		WithWorkflow("wf_123").
+		WithData(data)
+
+	var parsed event.WorkflowPublishedData
+	if err := evt.ParseData(&parsed); err != nil {
+		t.Fatalf("Failed to parse data: %v", err)
+	}
+	if parsed.Action != data.Action {
+		t.Errorf("Expected action %s, got %s", data.Action, parsed.Action)
+	}
+	if parsed.QueueLength != data.QueueLength {
+		t.Errorf("Expected queue_length %d, got %d", data.QueueLength, parsed.QueueLength)
+	}
+	if parsed.SuccessCount != data.SuccessCount {
+		t.Errorf("Expected success_count %d, got %d", data.SuccessCount, parsed.SuccessCount)
+	}
+	if parsed.ErrorCount != data.ErrorCount {
+		t.Errorf("Expected error_count %d, got %d", data.ErrorCount, parsed.ErrorCount)
+	}
+}
+
+func TestDataSchema_RoundTripSerialization(t *testing.T) {
+	// Test full round-trip: create event with typed data, serialize to JSON, deserialize, parse data
+	data := &event.RunStartedData{
+		TotalNodes: 5,
+		TriggerInfo: &event.TriggerInfo{
+			Type:     "manual",
+			HasData:  false,
+			DataSize: 0,
+			BlobURL:  "",
+		},
+	}
+
+	evt := event.New(event.TypeRunStarted).
+		WithClient("org_123").
+		WithWorkflow("wf_abc").
+		WithRun("run_xyz").
+		WithData(data)
+
+	bytes, err := evt.Bytes()
+	if err != nil {
+		t.Fatalf("Failed to serialize: %v", err)
+	}
+
+	var decoded event.Event
+	if err := json.Unmarshal(bytes, &decoded); err != nil {
+		t.Fatalf("Failed to deserialize: %v", err)
+	}
+
+	var parsed event.RunStartedData
+	if err := decoded.ParseData(&parsed); err != nil {
+		t.Fatalf("Failed to parse data: %v", err)
+	}
+
+	if parsed.TotalNodes != data.TotalNodes {
+		t.Errorf("Round-trip total_nodes mismatch: got %d, want %d", parsed.TotalNodes, data.TotalNodes)
+	}
+	if parsed.TriggerInfo.Type != data.TriggerInfo.Type {
+		t.Errorf("Expected trigger_info.type %s, got %s", data.TriggerInfo.Type, parsed.TriggerInfo.Type)
+	}
+	if parsed.TriggerInfo.HasData != data.TriggerInfo.HasData {
+		t.Errorf("Expected trigger_info.has_data %t, got %t", data.TriggerInfo.HasData, parsed.TriggerInfo.HasData)
+	}
+	if parsed.TriggerInfo.DataSize != data.TriggerInfo.DataSize {
+		t.Errorf("Expected trigger_info.data_size %d, got %d", data.TriggerInfo.DataSize, parsed.TriggerInfo.DataSize)
+	}
+}

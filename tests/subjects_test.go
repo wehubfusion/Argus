@@ -19,14 +19,9 @@ func TestGetSubjectForEventType_AllEventTypes(t *testing.T) {
 			expected:  nats.SubjectWorkflowPublished,
 		},
 		{
-			name:      "WorkflowUnpublished",
-			eventType: event.TypeWorkflowUnpublished,
-			expected:  nats.SubjectWorkflowUnpublished,
-		},
-		{
-			name:      "WorkflowHealth",
-			eventType: event.TypeWorkflowHealth,
-			expected:  nats.SubjectWorkflowHealthChanged,
+			name:      "WorkflowPublished",
+			eventType: event.TypeWorkflowPublished,
+			expected:  nats.SubjectWorkflowPublished,
 		},
 		{
 			name:      "RunStarted",

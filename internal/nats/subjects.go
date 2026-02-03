@@ -10,18 +10,16 @@ const (
 	// Subject prefix for all observation events
 	SubjectPrefix = "OBSERVE"
 
-	// Workflow catalog events (Level 1)
-	SubjectWorkflowPublished     = "OBSERVE.WORKFLOW.PUBLISHED"
-	SubjectWorkflowUnpublished   = "OBSERVE.WORKFLOW.UNPUBLISHED"
-	SubjectWorkflowHealthChanged = "OBSERVE.WORKFLOW.HEALTH"
+	// Workflow catalog events
+	SubjectWorkflowPublished = "OBSERVE.WORKFLOW.PUBLISHED"
 
-	// Run lifecycle events (Level 2)
-	SubjectRunStarted = "OBSERVE.RUN.STARTED"
-	SubjectRunEnded   = "OBSERVE.RUN.ENDED"
+	// Run lifecycle events
+	SubjectRunStarted = "OBSERVE.WORKFLOW.RUN.STARTED"
+	SubjectRunEnded   = "OBSERVE.WORKFLOW.RUN.ENDED"
 
-	// Plugin lifecycle events (Level 3)
-	SubjectPluginStarted = "OBSERVE.PLUGIN.STARTED"
-	SubjectPluginEnded   = "OBSERVE.PLUGIN.ENDED"
+	// Plugin lifecycle events
+	SubjectPluginStarted = "OBSERVE.WORKFLOW.PLUGIN.STARTED"
+	SubjectPluginEnded   = "OBSERVE.WORKFLOW.PLUGIN.ENDED"
 )
 
 // GetSubjectForEventType returns the NATS subject for a given event type
@@ -29,10 +27,6 @@ func GetSubjectForEventType(eventType string) string {
 	switch eventType {
 	case event.TypeWorkflowPublished:
 		return SubjectWorkflowPublished
-	case event.TypeWorkflowUnpublished:
-		return SubjectWorkflowUnpublished
-	case event.TypeWorkflowHealth:
-		return SubjectWorkflowHealthChanged
 	case event.TypeRunStarted:
 		return SubjectRunStarted
 	case event.TypeRunEnded:

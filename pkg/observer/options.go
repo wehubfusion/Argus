@@ -2,6 +2,8 @@ package observer
 
 import (
 	"time"
+
+	"github.com/wehubfusion/Argus/pkg/event"
 )
 
 // Options configures the Observer behavior
@@ -16,8 +18,7 @@ type Options struct {
 	// Default: true (drop-on-pressure)
 	DropOnFull bool
 
-	// StreamName is the JetStream stream name for observation events
-	// Default: "OBSERVATION"
+	// StreamName is the JetStream stream name for observation events (default: event.StreamName)
 	StreamName string
 
 	// StreamMaxAge is the maximum age for messages in the stream
@@ -38,7 +39,7 @@ func DefaultOptions() Options {
 	return Options{
 		BufferSize:     1000,
 		DropOnFull:     true,
-		StreamName:     "OBSERVATION", // Default stream name
+		StreamName:     event.StreamName,
 		StreamMaxAge:   30 * 24 * time.Hour, // 30 days
 		StreamMaxMsgs:  1000000,
 		PublishTimeout: 5 * time.Second,

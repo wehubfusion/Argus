@@ -3,11 +3,10 @@ package tests
 import (
 	"testing"
 
-	"github.com/wehubfusion/Argus/internal/nats"
 	"github.com/wehubfusion/Argus/pkg/event"
 )
 
-func TestGetSubjectForEventType_AllEventTypes(t *testing.T) {
+func TestSubjectForEventType_AllEventTypes(t *testing.T) {
 	tests := []struct {
 		name      string
 		eventType string
@@ -16,38 +15,48 @@ func TestGetSubjectForEventType_AllEventTypes(t *testing.T) {
 		{
 			name:      "WorkflowPublished",
 			eventType: event.TypeWorkflowPublished,
-			expected:  nats.SubjectWorkflowPublished,
-		},
-		{
-			name:      "WorkflowPublished",
-			eventType: event.TypeWorkflowPublished,
-			expected:  nats.SubjectWorkflowPublished,
+			expected:  event.SubjectWorkflowPublished,
 		},
 		{
 			name:      "RunStarted",
 			eventType: event.TypeRunStarted,
-			expected:  nats.SubjectRunStarted,
+			expected:  event.SubjectRunStarted,
 		},
 		{
 			name:      "RunEnded",
 			eventType: event.TypeRunEnded,
-			expected:  nats.SubjectRunEnded,
+			expected:  event.SubjectRunEnded,
 		},
 		{
 			name:      "PluginStarted",
 			eventType: event.TypePluginStarted,
-			expected:  nats.SubjectPluginStarted,
+			expected:  event.SubjectPluginStarted,
 		},
 		{
 			name:      "PluginEnded",
 			eventType: event.TypePluginEnded,
-			expected:  nats.SubjectPluginEnded,
+			expected:  event.SubjectPluginEnded,
+		},
+		{
+			name:      "NodeTriggered",
+			eventType: event.TypeNodeTriggered,
+			expected:  event.SubjectNodeTriggered,
+		},
+		{
+			name:      "NodeStarted",
+			eventType: event.TypeNodeStarted,
+			expected:  event.SubjectNodeStarted,
+		},
+		{
+			name:      "NodeEnded",
+			eventType: event.TypeNodeEnded,
+			expected:  event.SubjectNodeEnded,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := nats.GetSubjectForEventType(tt.eventType)
+			result := event.SubjectForEventType(tt.eventType)
 			if result != tt.expected {
 				t.Errorf("Expected subject %s, got %s", tt.expected, result)
 			}
@@ -55,30 +64,30 @@ func TestGetSubjectForEventType_AllEventTypes(t *testing.T) {
 	}
 }
 
-func TestGetSubjectForEventType_UnknownEventType(t *testing.T) {
-	result := nats.GetSubjectForEventType("unknown.event.type")
+func TestSubjectForEventType_UnknownEventType(t *testing.T) {
+	result := event.SubjectForEventType("unknown.event.type")
 	if result != "" {
 		t.Errorf("Expected empty string for unknown event type, got %s", result)
 	}
 }
 
-func TestGetSubjectForEventType_EmptyString(t *testing.T) {
-	result := nats.GetSubjectForEventType("")
+func TestSubjectForEventType_EmptyString(t *testing.T) {
+	result := event.SubjectForEventType("")
 	if result != "" {
 		t.Errorf("Expected empty string for empty event type, got %s", result)
 	}
 }
 
-func TestGetSubjectForEventType_CaseSensitive(t *testing.T) {
+func TestSubjectForEventType_CaseSensitive(t *testing.T) {
 	// Verify that event types are case-sensitive
-	result := nats.GetSubjectForEventType("RUN.STARTED") // Wrong case
+	result := event.SubjectForEventType("RUN.STARTED") // Wrong case
 	if result != "" {
 		t.Errorf("Expected empty string for wrong case, got %s", result)
 	}
 
 	// Correct case should work
-	result = nats.GetSubjectForEventType(event.TypeRunStarted)
-	if result != nats.SubjectRunStarted {
+	result = event.SubjectForEventType(event.TypeRunStarted)
+	if result != event.SubjectRunStarted {
 		t.Errorf("Expected subject for correct case, got %s", result)
 	}
 }

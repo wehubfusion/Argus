@@ -1,3 +1,5 @@
+// Package observer provides a non-blocking interface for emitting observation events to NATS JetStream.
+// Use NewObserver to create an observer. The default stream name matches event.StreamName.
 package observer
 
 import (
@@ -176,7 +178,7 @@ func (o *observer) worker() {
 			}
 
 			// Get subject for event type
-			subject := nats.GetSubjectForEventType(evt.Type)
+			subject := event.SubjectForEventType(evt.Type)
 			if subject == "" {
 				o.logger.Error("Unknown event type, skipping",
 					zap.String("event_id", evt.ID),
@@ -238,7 +240,7 @@ func (o *observer) drainEvents() {
 			}
 
 			// Get subject for event type
-			subject := nats.GetSubjectForEventType(evt.Type)
+			subject := event.SubjectForEventType(evt.Type)
 			if subject == "" {
 				o.logger.Error("Unknown event type during drain, skipping",
 					zap.String("event_id", evt.ID),

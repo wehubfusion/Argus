@@ -226,6 +226,18 @@ func TestValidate_Level3_MissingNodeID(t *testing.T) {
 	}
 }
 
+func TestValidate_Level3_NodeTriggered(t *testing.T) {
+	evt := event.New(event.TypeNodeTriggered).
+		WithClient("org_123").
+		WithWorkflow("wf_abc").
+		WithRun("run_xyz").
+		WithNode("node_1")
+
+	if err := evt.Validate(); err != nil {
+		t.Errorf("Expected valid node.triggered event, got error: %v", err)
+	}
+}
+
 func TestValidate_MissingEventID(t *testing.T) {
 	evt := event.New(event.TypeRunStarted)
 	evt.ID = "" // Clear ID
@@ -334,12 +346,9 @@ func TestEventSerialization(t *testing.T) {
 
 // === Data Schema Struct Tests ===
 
-func TestWithData_WorkflowPublishedData(t *testing.T) {
-	data := &event.WorkflowPublishedData{
-		Action:       "publish",
-		QueueLength:  10,
-		SuccessCount: 100,
-		ErrorCount:   5,
+func TestWithData_WorkflowPublish(t *testing.T) {
+	data := &event.WorkflowPublish{
+		Action: "publish",
 	}
 
 	evt := event.New(event.TypeWorkflowPublished).
@@ -351,15 +360,12 @@ func TestWithData_WorkflowPublishedData(t *testing.T) {
 		t.Fatal("Expected data to be set")
 	}
 
-	var parsed event.WorkflowPublishedData
+	var parsed event.WorkflowPublish
 	if err := evt.ParseData(&parsed); err != nil {
 		t.Fatalf("Failed to parse data: %v", err)
 	}
 	if parsed.Action != data.Action {
 		t.Errorf("Expected action %s, got %s", data.Action, parsed.Action)
-	}
-	if parsed.QueueLength != data.QueueLength {
-		t.Errorf("Expected queue_length %d, got %d", data.QueueLength, parsed.QueueLength)
 	}
 }
 
@@ -488,12 +494,38 @@ func TestWithData_PluginEndedData(t *testing.T) {
 	}
 }
 
+func TestWithData_TriggerNode(t *testing.T) {
+	data := &event.TriggerNode{
+		WorkflowID: "wf_abc",
+		RunID:      "run_xyz",
+		ClientID:   "org_123",
+		NodeID:     "node_1",
+		Type:       "plugin.http",
+		StartedAt:  1704067200000,
+	}
+
+	evt := event.New(event.TypeNodeTriggered).
+		WithClient("org_123").
+		WithWorkflow("wf_abc").
+		WithRun("run_xyz").
+		WithNode("node_1").
+		WithData(data)
+
+	var parsed event.TriggerNode
+	if err := evt.ParseData(&parsed); err != nil {
+		t.Fatalf("Failed to parse data: %v", err)
+	}
+	if parsed.NodeID != data.NodeID {
+		t.Errorf("Expected node_id %s, got %s", data.NodeID, parsed.NodeID)
+	}
+	if parsed.Type != data.Type {
+		t.Errorf("Expected type %s, got %s", data.Type, parsed.Type)
+	}
+}
+
 func TestWithData_WorkflowHealthData(t *testing.T) {
-	data := &event.WorkflowPublishedData{
-		Action:       "publish",
-		QueueLength:  10,
-		SuccessCount: 100,
-		ErrorCount:   5,
+	data := &event.WorkflowPublish{
+		Action: "publish",
 	}
 
 	evt := event.New(event.TypeWorkflowPublished).
@@ -501,21 +533,12 @@ func TestWithData_WorkflowHealthData(t *testing.T) {
 		WithWorkflow("wf_123").
 		WithData(data)
 
-	var parsed event.WorkflowPublishedData
+	var parsed event.WorkflowPublish
 	if err := evt.ParseData(&parsed); err != nil {
 		t.Fatalf("Failed to parse data: %v", err)
 	}
 	if parsed.Action != data.Action {
 		t.Errorf("Expected action %s, got %s", data.Action, parsed.Action)
-	}
-	if parsed.QueueLength != data.QueueLength {
-		t.Errorf("Expected queue_length %d, got %d", data.QueueLength, parsed.QueueLength)
-	}
-	if parsed.SuccessCount != data.SuccessCount {
-		t.Errorf("Expected success_count %d, got %d", data.SuccessCount, parsed.SuccessCount)
-	}
-	if parsed.ErrorCount != data.ErrorCount {
-		t.Errorf("Expected error_count %d, got %d", data.ErrorCount, parsed.ErrorCount)
 	}
 }
 

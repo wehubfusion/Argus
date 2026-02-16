@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/wehubfusion/Argus/pkg/event"
 	"go.uber.org/zap"
 )
 
@@ -72,7 +73,7 @@ func (p *Publisher) ensureStream() error {
 	// Create stream with custom config
 	streamConfig := &nats.StreamConfig{
 		Name:     p.config.StreamName,
-		Subjects: []string{fmt.Sprintf("%s.>", SubjectPrefix)}, // SubjectPrefix from subjects.go
+		Subjects: []string{event.SubjectPatternAll},
 		Storage:  nats.FileStorage,
 		MaxAge:   p.config.StreamMaxAge,
 		MaxMsgs:  p.config.StreamMaxMsgs,

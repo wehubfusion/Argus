@@ -87,8 +87,13 @@ func main() {
         WithClient("org_123").
         WithWorkflow("wf_abc").
         WithRun("run_xyz").
-        WithData(map[string]interface{}{
-            "trigger": "manual",
+        WithData(&event.RunStartedData{
+            TotalNodes: 10,
+            TriggerInfo: &event.TriggerInfo{
+                Type:     "manual",
+                HasData:  false,
+                DataSize: 0,
+            },
         })
 
     if err := obs.Emit(ctx, evt); err != nil {
@@ -112,9 +117,21 @@ Argus emits structured observation events organized by hierarchy:
 * `run.started` - Workflow run started
 * `run.ended` - Workflow run completed
 
-**Level 3 - Plugin Lifecycle:**
+**Note on `run.started` payloads**
+
+`run.started` is intentionally used for two related moments in the lifecycle:
+
+- **Trigger enqueue (pending)**: producers may emit `run.started` with `event.TriggerWorkflow` as `Data` to indicate a trigger was accepted/enqueued (useful for queue dashboards).
+- **Execution begin (running)**: orchestrators may emit `run.started` with `event.RunStartedData` as `Data` to indicate execution actually began (e.g., first unit dispatched).
+
+Downstream consumers can distinguish these by attempting to parse `Data` as `TriggerWorkflow` first (it contains `workflow_id`, `run_id`, `client_id`, `type`, `payload`, timestamps), and falling back to `RunStartedData`.
+
+**Level 3 - Plugin/Node Lifecycle:**
 * `plugin.started` - Plugin/node execution started
 * `plugin.ended` - Plugin/node execution completed
+* `node.triggered` - Node (execution unit) dispatched by an orchestrator (e.g. Zeus). Payload: `TriggerNode`.
+* `node.started` - Node execution started on a worker. Payload: `StartNode` (includes input payload metadata for the node or execution unit).
+* `node.ended`  - Node execution completed on a worker/orchestrator. Payload: `EndNode` (includes output payload metadata and error flags).
 
 ### Event Structure
 
@@ -152,6 +169,9 @@ type Event struct {
 // With default options
 obs, err := observer.NewObserver(js, observer.DefaultOptions(), logger)
 
+// When observation is disabled, pass nil and check for nil before calling Emit/Close
+obs = nil
+
 // With custom options
 opts := observer.DefaultOptions().
     WithBufferSize(5000).
@@ -183,9 +203,13 @@ evt := event.New(event.TypeRunEnded).
     WithClient("org_123").
     WithWorkflow("wf_abc").
     WithRun("run_xyz").
-    WithData(map[string]interface{}{
-        "status":   "success",
-        "duration": 1500,
+    WithData(&event.RunEndedData{
+        Status:       "completed",
+        TotalNodes:   10,
+        SuccessNodes: 10,
+        FailedNodes:  0,
+        SkippedNodes: 0,
+        QueueLength:  0,
     })
 
 err := obs.Emit(ctx, evt)
@@ -199,9 +223,15 @@ evt := event.New(event.TypePluginStarted).
     WithWorkflow("wf_abc").
     WithRun("run_xyz").
     WithNode("node_1").
-    WithData(map[string]interface{}{
-        "plugin_type": "http",
-        "attempt":     1,
+    WithData(&event.PluginStartedData{
+        ExecutionID:    "exec_001",
+        PluginType:     "plugin-http",
+        Label:          "HTTP Request",
+        ExecutionOrder: 1,
+        StartedAt:      time.Now().UnixMilli(),
+        InputPayload: &event.PayloadInfo{
+            InlineData: json.RawMessage(`{"url":"https://example.com"}`),
+        },
     })
 
 err := obs.Emit(ctx, evt)
@@ -279,17 +309,32 @@ This design ensures:
 
 ---
 
+## NATS contract
+
+Producers and consumers share a single contract defined in `pkg/event`:
+
+* **Stream name**: `event.StreamName` (`"OBSERVATION"`)
+* **Subject prefix**: `event.SubjectPrefix` (`"OBSERVE"`)
+* **Subscribe-all pattern**: `event.SubjectPatternAll` (`"OBSERVE.>"`) — use this to consume all observation events from the stream
+
+Consumers (e.g. Athena) should subscribe to the stream `event.StreamName` with subject `event.SubjectPatternAll` (or a more specific pattern) so they receive events published by Argus/Zeus.
+
+---
+
 ## Event Consumption
 
-Events are published to NATS JetStream subjects:
+Events are published to NATS JetStream subjects (see `event.SubjectForEventType` and constants in `pkg/event`):
 
 * `OBSERVE.WORKFLOW.PUBLISHED` (includes Action: "publish" | "unpublish" in data)
-* `OBSERVE.RUN.STARTED`
-* `OBSERVE.RUN.ENDED`
-* `OBSERVE.PLUGIN.STARTED`
-* `OBSERVE.PLUGIN.ENDED`
+* `OBSERVE.WORKFLOW.RUN.STARTED`
+* `OBSERVE.WORKFLOW.RUN.ENDED`
+* `OBSERVE.WORKFLOW.PLUGIN.STARTED`
+* `OBSERVE.WORKFLOW.PLUGIN.ENDED`
+* `OBSERVE.WORKFLOW.NODE.TRIGGERED`
+* `OBSERVE.WORKFLOW.NODE.STARTED`
+* `OBSERVE.WORKFLOW.NODE.ENDED`
 
-Consumers can subscribe to these subjects to process events. The `pkg/event` package provides the event structure for parsing:
+Consumers can subscribe to these subjects (or use `event.SubjectPatternAll` to subscribe to all) and parse messages using the `pkg/event` package:
 
 ```go
 import "github.com/wehubfusion/Argus/pkg/event"

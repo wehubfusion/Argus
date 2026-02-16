@@ -10,10 +10,21 @@ import (
 // Event type constants
 const (
 	TypeWorkflowPublished = "workflow.published"
+	TypeWorkflowStarted   = "workflow.started"
 	TypeRunStarted        = "run.started"
 	TypeRunEnded          = "run.ended"
 	TypePluginStarted     = "plugin.started"
 	TypePluginEnded       = "plugin.ended"
+	// TypeNodeTriggered is a Level 3 node lifecycle event emitted when an
+	// execution unit (and its embedded nodes) is dispatched by an orchestrator
+	// such as Zeus. Payload: TriggerNode.
+	TypeNodeTriggered = "node.triggered"
+	// TypeNodeStarted is a Level 3 node lifecycle event emitted when a node
+	// begins execution on a worker. Payload: StartNode.
+	TypeNodeStarted = "node.started"
+	// TypeNodeEnded is a Level 3 node lifecycle event emitted when a node
+	// finishes execution on a worker. Payload: EndNode.
+	TypeNodeEnded = "node.ended"
 )
 
 // Event is the universal observation event structure.
@@ -32,7 +43,7 @@ type Event struct {
 	// === Routing & Identity ===
 	ID        string    `json:"id"`        // Unique ID (for JetStream deduplication)
 	Type      string    `json:"type"`      // Event type (e.g., "run.started", "plugin.ended")
-	Version   string    `json:"v"`         // Schema version
+	Version   string    `json:"v"`         // Schema version; consumers should check before parsing Data and skip or log unknown versions
 	Timestamp time.Time `json:"timestamp"` // When event occurred
 
 	// === Context (correlation & multi-tenancy) ===
@@ -145,7 +156,7 @@ func (e *Event) Validate() error {
 			return ErrMissingWorkflowID
 		}
 
-	case TypeRunStarted, TypeRunEnded:
+	case TypeWorkflowStarted, TypeRunStarted, TypeRunEnded:
 		if e.WorkflowID == "" {
 			return ErrMissingWorkflowID
 		}
@@ -153,7 +164,7 @@ func (e *Event) Validate() error {
 			return ErrMissingRunID
 		}
 
-	case TypePluginStarted, TypePluginEnded:
+	case TypePluginStarted, TypePluginEnded, TypeNodeTriggered, TypeNodeStarted, TypeNodeEnded:
 		if e.WorkflowID == "" {
 			return ErrMissingWorkflowID
 		}
@@ -173,40 +184,118 @@ func (e *Event) Validate() error {
 // Event producers use these to create type-safe data.
 // Event consumers use these to parse data.
 
-// WorkflowPublishedData is the data payload for workflow.published events.
+// WorkflowPublish is the data payload for workflow.published events.
 // client_id and workflow_id are on the event envelope; timestamp is event.Timestamp.
-type WorkflowPublishedData struct {
-	Action       string `json:"action"`                  // "publish" | "unpublish"
-	QueueLength  int    `json:"queue_length,omitempty"`
-	SuccessCount int    `json:"success_count,omitempty"`
-	ErrorCount   int    `json:"error_count,omitempty"`
+type WorkflowPublish struct {
+	Action       string `json:"action"` // "publish" | "unpublish"
+	Status       string `json:"status"` // "success" | "failed" | "started"
+	StartedAt    int64  `json:"started_at"`
+	EndedAt      int64  `json:"ended_at"`
+	HasError     bool   `json:"has_error"`
+	ErrorMessage string `json:"error_message,omitempty"`
 }
 
-// RunStartedData is the data payload for run.started events.
-// run_id is on the event envelope; timestamp is event.Timestamp.
+type TriggerWorkflow struct {
+	WorkflowID   string   `json:"workflow_id"`
+	RunID        string   `json:"run_id"`
+	ClientID     string   `json:"client_id"`
+	Type         string   `json:"type"`
+	Payload      *Payload `json:"payload"`
+	StartedAt    int64    `json:"started_at"`
+	EndedAt      int64    `json:"ended_at"`
+	HasError     bool     `json:"has_error"`
+	ErrorMessage string   `json:"error_message,omitempty"`
+}
+
+// TriggerInfo provides context about what initiated a run (e.g., http/manual) and payload details.
+type TriggerInfo struct {
+	Type     string `json:"type"`               // "http" | "manual" | "kafka" | ...
+	HasData  bool   `json:"has_data"`           // Whether trigger had any payload
+	DataSize int    `json:"data_size"`          // Inline payload size (bytes) when applicable
+	BlobURL  string `json:"blob_url,omitempty"` // Blob URL if payload was stored externally
+}
+
+// RunStartedData is the data payload for run.started events emitted when execution begins.
+// It is distinct from TriggerWorkflow (also sent with run.started) which represents trigger enqueueing.
 type RunStartedData struct {
 	TotalNodes  int          `json:"total_nodes"`
-	QueueLength int          `json:"queue_length,omitempty"`
-	TriggerInfo *TriggerInfo `json:"trigger_info"`
-}
-
-// TriggerInfo contains trigger metadata for run.started events.
-type TriggerInfo struct {
-	Type     string `json:"type"` // "http", "manual", "scheduled", "unknown"
-	HasData  bool   `json:"has_data"`
-	DataSize int    `json:"data_size,omitempty"` // Bytes
-	BlobURL  string `json:"blob_url,omitempty"`  // If trigger data in blob
+	TriggerInfo *TriggerInfo `json:"trigger_info,omitempty"`
 }
 
 // RunEndedData is the data payload for run.ended events.
-// run_id is on the event envelope; timestamp is event.Timestamp.
 type RunEndedData struct {
-	Status       string `json:"status"` // "success", "failed"
+	Status       string `json:"status"` // "completed" | "failed" | "partial" | ...
 	TotalNodes   int    `json:"total_nodes"`
 	SuccessNodes int    `json:"success_nodes"`
 	FailedNodes  int    `json:"failed_nodes"`
 	SkippedNodes int    `json:"skipped_nodes"`
-	QueueLength  int    `json:"queue_length,omitempty"`
+	QueueLength  int    `json:"queue_length"`
+}
+
+type StartWorkflow struct {
+	WorkflowID string `json:"workflow_id"`
+	RunID      string `json:"run_id"`
+	ClientID   string `json:"client_id"`
+	StartedAt  int64  `json:"started_at"`
+}
+
+type EndWorkflow struct {
+	WorkflowID   string `json:"workflow_id"`
+	RunID        string `json:"run_id"`
+	ClientID     string `json:"client_id"`
+	EndedAt      int64  `json:"ended_at"`
+	HasError     bool   `json:"has_error"`
+	ErrorMessage string `json:"error_message,omitempty"`
+}
+
+// TriggerNode is the data payload for node.triggered events.
+// It captures when an execution unit (and optionally its embedded nodes)
+// is dispatched by an orchestrator. The identifying fields
+// (client_id, workflow_id, run_id, node_id) are also present on the
+// Event envelope; they are duplicated here for convenience for consumers.
+type TriggerNode struct {
+	WorkflowID string   `json:"workflow_id"`
+	RunID      string   `json:"run_id"`
+	ClientID   string   `json:"client_id"`
+	NodeID     string   `json:"node_id"`
+	Label      string   `json:"label,omitempty"` // Human-readable node label from execution plan (e.g. "ESR", "Append to User.csv")
+	Type       string   `json:"type"`
+	Payload    *Payload `json:"payload"`
+	StartedAt  int64    `json:"started_at"`
+}
+
+type StartNode struct {
+	WorkflowID string   `json:"workflow_id"`
+	RunID      string   `json:"run_id"`
+	ClientID   string   `json:"client_id"`
+	NodeID     string   `json:"node_id"`
+	StartedAt  int64    `json:"started_at"`
+	Input      *Payload `json:"input"`
+}
+type EndNode struct {
+	WorkflowID   string   `json:"workflow_id"`
+	RunID        string   `json:"run_id"`
+	ClientID     string   `json:"client_id"`
+	NodeID       string   `json:"node_id"`
+	Label        string   `json:"label,omitempty"`      // Human-readable node label from execution plan (e.g. "ESR", "Auth Rule")
+	StartedAt    int64    `json:"started_at,omitempty"` // Unix ms when node execution started (optional; derived from result timestamp − duration when available)
+	EndedAt      int64    `json:"ended_at"`
+	Output       *Payload `json:"output"`
+	HasError     bool     `json:"has_error"`
+	ErrorMessage string   `json:"error_message,omitempty"`
+}
+
+// BlobRef represents a blob reference for observation payloads (used by plugin events).
+type BlobRef struct {
+	URL       string `json:"url"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+// PayloadInfo represents inline or blob payloads for plugin lifecycle events.
+// InlineData is raw JSON so UIs can display it without base64 decoding.
+type PayloadInfo struct {
+	InlineData    json.RawMessage `json:"inline_data,omitempty"`
+	BlobReference *BlobRef        `json:"blob_reference,omitempty"`
 }
 
 // PluginStartedData is the data payload for plugin.started events.
@@ -220,24 +309,21 @@ type PluginStartedData struct {
 }
 
 // PluginEndedData is the data payload for plugin.ended events.
-// node_id is on the event envelope.
 type PluginEndedData struct {
 	ExecutionID   string       `json:"execution_id"`
-	Status        string       `json:"status"`   // "success", "failed", "skipped"
-	EndedAt       int64        `json:"ended_at"` // Unix timestamp for precision
+	Status        string       `json:"status"` // "success" | "failed" | "skipped"
+	EndedAt       int64        `json:"ended_at"`
 	OutputPayload *PayloadInfo `json:"output_payload,omitempty"`
 	HasError      bool         `json:"has_error"`
 	ErrorMessage  string       `json:"error_message,omitempty"`
 }
 
-// PayloadInfo represents payload data (inline or blob reference).
-type PayloadInfo struct {
-	InlineData    json.RawMessage `json:"inline_data,omitempty"`
-	BlobReference *BlobRef        `json:"blob_reference,omitempty"`
+type Payload struct {
+	InlineData    []byte         `json:"inline_data"`
+	BlobReference *BlobReference `json:"blob_reference"`
 }
 
-// BlobRef represents a blob storage reference.
-type BlobRef struct {
-	URL       string `json:"url"`
-	SizeBytes int64  `json:"size_bytes"`
+type BlobReference struct {
+	URL  string `json:"url"`
+	Size int64  `json:"size"`
 }

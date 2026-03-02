@@ -283,6 +283,12 @@ type EndNode struct {
 	Output       *Payload `json:"output"`
 	HasError     bool     `json:"has_error"`
 	ErrorMessage string   `json:"error_message,omitempty"`
+
+	// Extended payload fields (optional; used by Athena payload processor)
+	ProjectID          string                          `json:"project_id,omitempty"`           // For blob path and multi-tenant isolation
+	ContainsNodes      []string                        `json:"contains_nodes,omitempty"`       // Node IDs whose outputs are in this unit result (parent + embedded)
+	ExecutionID        string                          `json:"execution_id,omitempty"`         // Execution ID of the unit that produced this result
+	ConsumerInputHints map[string]*ConsumerInputHints  `json:"consumer_input_hints,omitempty"` // consumerNodeID -> hints for building consumer inputs
 }
 
 // BlobRef represents a blob reference for observation payloads (used by plugin events).
@@ -316,6 +322,19 @@ type PluginEndedData struct {
 	OutputPayload *PayloadInfo `json:"output_payload,omitempty"`
 	HasError      bool         `json:"has_error"`
 	ErrorMessage  string       `json:"error_message,omitempty"`
+}
+
+// ConsumerInputHints describes how to build a consumer node's input from prior node outputs.
+// Used on EndNode events so Athena can backfill Node.Input for downstream nodes.
+type ConsumerInputHints struct {
+	Sources []SourceHint `json:"sources"`
+}
+
+// SourceHint points at a source node and fields within its output.
+type SourceHint struct {
+	NodeID string   `json:"nodeID"`
+	Label  string   `json:"label"`
+	Fields []string `json:"fields"` // e.g. ["name"] or ["name","age"]
 }
 
 type Payload struct {

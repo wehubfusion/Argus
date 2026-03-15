@@ -199,6 +199,7 @@ type TriggerWorkflow struct {
 	WorkflowID   string   `json:"workflow_id"`
 	RunID        string   `json:"run_id"`
 	ClientID     string   `json:"client_id"`
+	ProjectID    string   `json:"project_id,omitempty"` // For blob path and multi-tenant isolation
 	Type         string   `json:"type"`
 	Payload      *Payload `json:"payload"`
 	StartedAt    int64    `json:"started_at"`
@@ -219,12 +220,14 @@ type TriggerInfo struct {
 // It is distinct from TriggerWorkflow (also sent with run.started) which represents trigger enqueueing.
 type RunStartedData struct {
 	TotalNodes  int          `json:"total_nodes"`
+	ProjectID   string       `json:"project_id,omitempty"` // For blob path and multi-tenant isolation
 	TriggerInfo *TriggerInfo `json:"trigger_info,omitempty"`
 }
 
 // RunEndedData is the data payload for run.ended events.
 type RunEndedData struct {
 	Status       string `json:"status"` // "completed" | "failed" | "partial" | ...
+	ProjectID    string `json:"project_id,omitempty"` // For multi-tenant isolation
 	TotalNodes   int    `json:"total_nodes"`
 	SuccessNodes int    `json:"success_nodes"`
 	FailedNodes  int    `json:"failed_nodes"`
@@ -257,6 +260,7 @@ type TriggerNode struct {
 	WorkflowID string   `json:"workflow_id"`
 	RunID      string   `json:"run_id"`
 	ClientID   string   `json:"client_id"`
+	ProjectID  string   `json:"project_id,omitempty"` // For blob path and multi-tenant isolation
 	NodeID     string   `json:"node_id"`
 	Label      string   `json:"label,omitempty"` // Human-readable node label from execution plan (e.g. "ESR", "Append to User.csv")
 	Type       string   `json:"type"`
@@ -268,6 +272,7 @@ type StartNode struct {
 	WorkflowID string   `json:"workflow_id"`
 	RunID      string   `json:"run_id"`
 	ClientID   string   `json:"client_id"`
+	ProjectID  string   `json:"project_id,omitempty"` // For blob path and multi-tenant isolation
 	NodeID     string   `json:"node_id"`
 	StartedAt  int64    `json:"started_at"`
 	Input      *Payload `json:"input"`

@@ -280,6 +280,7 @@ type StartNode struct {
 	ClientID   string   `json:"client_id"`
 	ProjectID  string   `json:"project_id,omitempty"` // For blob path and multi-tenant isolation
 	NodeID     string   `json:"node_id"`
+	Label      string   `json:"label,omitempty"` // Human-readable node label from execution plan
 	StartedAt  int64    `json:"started_at"`
 	Input      *Payload `json:"input"`
 }

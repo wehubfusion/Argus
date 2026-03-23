@@ -25,6 +25,12 @@ const (
 	// TypeNodeEnded is a Level 3 node lifecycle event emitted when a node
 	// finishes execution on a worker. Payload: EndNode.
 	TypeNodeEnded = "node.ended"
+	// TypeNodeOutput is a Level 3 event emitted when a producer node's output
+	// payload is ready for storage. Handled separately from node.ended. Payload: NodeOutputData.
+	TypeNodeOutput = "node.output"
+	// TypeNodeInput is a Level 3 event emitted for each consumer node with
+	// pre-built input payload. One event per consumer. Payload: NodeInputData.
+	TypeNodeInput = "node.input"
 )
 
 // Event is the universal observation event structure.
@@ -164,7 +170,7 @@ func (e *Event) Validate() error {
 			return ErrMissingRunID
 		}
 
-	case TypePluginStarted, TypePluginEnded, TypeNodeTriggered, TypeNodeStarted, TypeNodeEnded:
+	case TypePluginStarted, TypePluginEnded, TypeNodeTriggered, TypeNodeStarted, TypeNodeEnded, TypeNodeOutput, TypeNodeInput:
 		if e.WorkflowID == "" {
 			return ErrMissingWorkflowID
 		}
@@ -293,7 +299,25 @@ type EndNode struct {
 	ProjectID          string                          `json:"project_id,omitempty"`           // For blob path and multi-tenant isolation
 	ContainsNodes      []string                        `json:"contains_nodes,omitempty"`       // Node IDs whose outputs are in this unit result (parent + embedded)
 	ExecutionID        string                          `json:"execution_id,omitempty"`         // Execution ID of the unit that produced this result
-	ConsumerInputHints map[string]*ConsumerInputHints  `json:"consumer_input_hints,omitempty"` // consumerNodeID -> hints for building consumer inputs
+	ConsumerInputs map[string]*Payload `json:"consumer_inputs,omitempty"` // consumerNodeID -> pre-built input (inline or blob) from Elysium
+}
+
+// NodeOutputData is the payload for node.output events. Stores producer node output
+// as-is (inline or blob). event.NodeID = producer node.
+type NodeOutputData struct {
+	Output        *Payload `json:"output"`
+	HasError      bool     `json:"has_error"`
+	ErrorMessage  string   `json:"error_message,omitempty"`
+	ProjectID     string   `json:"project_id,omitempty"`
+	ContainsNodes []string `json:"contains_nodes,omitempty"`
+}
+
+// NodeInputData is the payload for node.input events. One event per consumer node.
+// event.NodeID = consumer node ID; Input is the pre-built payload from Elysium.
+type NodeInputData struct {
+	Input         *Payload `json:"input"`
+	ProjectID     string   `json:"project_id,omitempty"`
+	SourceNodeID  string   `json:"source_node_id,omitempty"` // For debugging
 }
 
 // BlobRef represents a blob reference for observation payloads (used by plugin events).
@@ -327,19 +351,6 @@ type PluginEndedData struct {
 	OutputPayload *PayloadInfo `json:"output_payload,omitempty"`
 	HasError      bool         `json:"has_error"`
 	ErrorMessage  string       `json:"error_message,omitempty"`
-}
-
-// ConsumerInputHints describes how to build a consumer node's input from prior node outputs.
-// Used on EndNode events so Athena can backfill Node.Input for downstream nodes.
-type ConsumerInputHints struct {
-	Sources []SourceHint `json:"sources"`
-}
-
-// SourceHint points at a source node and fields within its output.
-type SourceHint struct {
-	NodeID string   `json:"nodeID"`
-	Label  string   `json:"label"`
-	Fields []string `json:"fields"` // e.g. ["name"] or ["name","age"]
 }
 
 type Payload struct {

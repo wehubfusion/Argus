@@ -49,6 +49,14 @@ const (
 	// SubjectNodeEnded is the subject for node ended events.
 	// These are emitted when a node finishes execution on a worker.
 	SubjectNodeEnded = "OBSERVE.WORKFLOW.NODE.ENDED"
+
+	// SubjectNodeOutput is the subject for node output events.
+	// These are emitted when a producer node's output payload is ready for storage.
+	SubjectNodeOutput = "OBSERVE.WORKFLOW.NODE.OUTPUT"
+
+	// SubjectNodeInput is the subject for node input events.
+	// These are emitted per consumer node with pre-built input payload.
+	SubjectNodeInput = "OBSERVE.WORKFLOW.NODE.INPUT"
 )
 
 // SubjectForEventType returns the NATS subject for a given event type.
@@ -73,6 +81,10 @@ func SubjectForEventType(eventType string) string {
 		return SubjectNodeStarted
 	case TypeNodeEnded:
 		return SubjectNodeEnded
+	case TypeNodeOutput:
+		return SubjectNodeOutput
+	case TypeNodeInput:
+		return SubjectNodeInput
 	default:
 		return ""
 	}

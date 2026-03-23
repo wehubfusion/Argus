@@ -52,6 +52,16 @@ func TestSubjectForEventType_AllEventTypes(t *testing.T) {
 			eventType: event.TypeNodeEnded,
 			expected:  event.SubjectNodeEnded,
 		},
+		{
+			name:      "NodeOutput",
+			eventType: event.TypeNodeOutput,
+			expected:  event.SubjectNodeOutput,
+		},
+		{
+			name:      "NodeInput",
+			eventType: event.TypeNodeInput,
+			expected:  event.SubjectNodeInput,
+		},
 	}
 
 	for _, tt := range tests {

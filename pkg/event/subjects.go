@@ -31,12 +31,6 @@ const (
 	// SubjectRunEnded is the subject for run ended events.
 	SubjectRunEnded = "OBSERVE.WORKFLOW.RUN.ENDED"
 
-	// SubjectPluginStarted is the subject for plugin started events.
-	SubjectPluginStarted = "OBSERVE.WORKFLOW.PLUGIN.STARTED"
-
-	// SubjectPluginEnded is the subject for plugin ended events.
-	SubjectPluginEnded = "OBSERVE.WORKFLOW.PLUGIN.ENDED"
-
 	// SubjectNodeTriggered is the subject for node trigger events.
 	// These are emitted when an execution unit (and its embedded nodes)
 	// is dispatched by an orchestrator.
@@ -50,13 +44,6 @@ const (
 	// These are emitted when a node finishes execution on a worker.
 	SubjectNodeEnded = "OBSERVE.WORKFLOW.NODE.ENDED"
 
-	// SubjectNodeOutput is the subject for node output events.
-	// These are emitted when a producer node's output payload is ready for storage.
-	SubjectNodeOutput = "OBSERVE.WORKFLOW.NODE.OUTPUT"
-
-	// SubjectNodeInput is the subject for node input events.
-	// These are emitted per consumer node with pre-built input payload.
-	SubjectNodeInput = "OBSERVE.WORKFLOW.NODE.INPUT"
 )
 
 // SubjectForEventType returns the NATS subject for a given event type.
@@ -71,20 +58,12 @@ func SubjectForEventType(eventType string) string {
 		return SubjectRunStarted
 	case TypeRunEnded:
 		return SubjectRunEnded
-	case TypePluginStarted:
-		return SubjectPluginStarted
-	case TypePluginEnded:
-		return SubjectPluginEnded
 	case TypeNodeTriggered:
 		return SubjectNodeTriggered
 	case TypeNodeStarted:
 		return SubjectNodeStarted
 	case TypeNodeEnded:
 		return SubjectNodeEnded
-	case TypeNodeOutput:
-		return SubjectNodeOutput
-	case TypeNodeInput:
-		return SubjectNodeInput
 	default:
 		return ""
 	}

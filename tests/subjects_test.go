@@ -28,16 +28,6 @@ func TestSubjectForEventType_AllEventTypes(t *testing.T) {
 			expected:  event.SubjectRunEnded,
 		},
 		{
-			name:      "PluginStarted",
-			eventType: event.TypePluginStarted,
-			expected:  event.SubjectPluginStarted,
-		},
-		{
-			name:      "PluginEnded",
-			eventType: event.TypePluginEnded,
-			expected:  event.SubjectPluginEnded,
-		},
-		{
 			name:      "NodeTriggered",
 			eventType: event.TypeNodeTriggered,
 			expected:  event.SubjectNodeTriggered,
@@ -51,16 +41,6 @@ func TestSubjectForEventType_AllEventTypes(t *testing.T) {
 			name:      "NodeEnded",
 			eventType: event.TypeNodeEnded,
 			expected:  event.SubjectNodeEnded,
-		},
-		{
-			name:      "NodeOutput",
-			eventType: event.TypeNodeOutput,
-			expected:  event.SubjectNodeOutput,
-		},
-		{
-			name:      "NodeInput",
-			eventType: event.TypeNodeInput,
-			expected:  event.SubjectNodeInput,
 		},
 	}
 

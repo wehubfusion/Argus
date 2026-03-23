@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/wehubfusion/Argus/pkg/event"
 	"github.com/wehubfusion/Argus/pkg/observer"
@@ -46,7 +47,7 @@ type PayloadOptions struct {
 // and uploader is provided, it uploads to the monitoring path and returns a
 // BlobReference. Otherwise returns InlineData.
 //
-// Use for both node.output and node.input payloads; set PathContext.IsInput
+// Use for both lifecycle payload directions; set PathContext.IsInput
 // accordingly for correct blob path suffixes.
 //
 // Returns nil, nil when data is empty. Returns an error only when upload fails;
@@ -128,13 +129,13 @@ func BuildMonitoringPath(pathCtx PathContext) string {
 	)
 }
 
-// NodeOutputEmitter emits node.output observation events with label-keyed format.
+// NodeOutputEmitter emits node.ended observation events with output payload.
 // Implementations are best-effort and must not panic.
 type NodeOutputEmitter interface {
-	EmitNodeOutput(ctx context.Context, params NodeOutputEmitParams) error
+	EmitNodeEnd(ctx context.Context, params NodeOutputEmitParams) error
 }
 
-// NodeOutputEmitParams contains all data needed to emit a node.output event.
+// NodeOutputEmitParams contains all data needed to emit terminal node state.
 type NodeOutputEmitParams struct {
 	ClientID      string
 	ProjectID     string
@@ -171,13 +172,13 @@ func NewArgusNodeOutputEmitter(
 	}
 }
 
-// EmitNodeOutput emits a node.output event with raw output (no label wrapping). Best-effort; logs errors, never panics.
-func (e *ArgusNodeOutputEmitter) EmitNodeOutput(ctx context.Context, params NodeOutputEmitParams) error {
+// EmitNodeEnd emits a node.ended event with output payload. Best-effort; logs errors, never panics.
+func (e *ArgusNodeOutputEmitter) EmitNodeEnd(ctx context.Context, params NodeOutputEmitParams) error {
 	if e == nil || e.observer == nil {
 		return nil
 	}
 	if params.ClientID == "" || params.WorkflowID == "" || params.RunID == "" || params.NodeID == "" {
-		e.logger.Debug("skipping node.output emit due to missing context",
+		e.logger.Debug("skipping node.ended emit due to missing context",
 			zap.String("workflow_id", params.WorkflowID),
 			zap.String("run_id", params.RunID),
 			zap.String("node_id", params.NodeID),
@@ -221,23 +222,27 @@ func (e *ArgusNodeOutputEmitter) EmitNodeOutput(ctx context.Context, params Node
 		return nil
 	}
 
-	outputData := &event.NodeOutputData{
-		Output:        payload,
-		HasError:      params.HasError,
-		ErrorMessage:  params.ErrorMessage,
-		ProjectID:     params.ProjectID,
-		ContainsNodes: params.ContainsNodes,
-	}
-
-	evt := event.New(event.TypeNodeOutput).
+	evt := event.New(event.TypeNodeEnded).
 		WithClient(params.ClientID).
 		WithWorkflow(params.WorkflowID).
 		WithRun(params.RunID).
 		WithNode(params.NodeID).
-		WithData(outputData)
+		WithData(&event.EndNode{
+			WorkflowID:   params.WorkflowID,
+			RunID:        params.RunID,
+			ClientID:     params.ClientID,
+			ProjectID:    params.ProjectID,
+			NodeID:       params.NodeID,
+			Label:        params.Label,
+			EndedAt:      time.Now().UnixMilli(),
+			Output:       payload,
+			HasError:     params.HasError,
+			ErrorMessage: params.ErrorMessage,
+			ContainsNodes: params.ContainsNodes,
+		})
 
 	if err := e.observer.Emit(ctx, evt); err != nil {
-		e.logger.Warn("failed to emit node.output observation event",
+		e.logger.Warn("failed to emit node.ended observation event",
 			zap.String("workflow_id", params.WorkflowID),
 			zap.String("run_id", params.RunID),
 			zap.String("node_id", params.NodeID),
@@ -245,22 +250,24 @@ func (e *ArgusNodeOutputEmitter) EmitNodeOutput(ctx context.Context, params Node
 		)
 		return err
 	}
+
 	return nil
 }
 
-// NodeInputEmitter emits node.input observation events with resolved payload.
+// NodeInputEmitter emits node.started observation events with resolved payload.
 // Implementations are best-effort and must not panic.
 type NodeInputEmitter interface {
-	EmitNodeInput(ctx context.Context, params NodeInputEmitParams) error
+	EmitNodeStart(ctx context.Context, params NodeInputEmitParams) error
 }
 
-// NodeInputEmitParams contains all data needed to emit a node.input event.
+// NodeInputEmitParams contains all data needed to emit a node.started event.
 type NodeInputEmitParams struct {
 	ClientID   string
 	ProjectID  string
 	WorkflowID string
 	RunID      string
 	NodeID     string
+	Label      string // Human-readable node label (e.g. from execution plan)
 	Input      []byte
 }
 
@@ -287,13 +294,13 @@ func NewArgusNodeInputEmitter(
 	}
 }
 
-// EmitNodeInput emits a node.input event with resolved payload. Best-effort; logs errors, never panics.
-func (e *ArgusNodeInputEmitter) EmitNodeInput(ctx context.Context, params NodeInputEmitParams) error {
+// EmitNodeStart emits a node.started event with resolved payload. Best-effort; logs errors, never panics.
+func (e *ArgusNodeInputEmitter) EmitNodeStart(ctx context.Context, params NodeInputEmitParams) error {
 	if e == nil || e.observer == nil {
 		return nil
 	}
 	if params.ClientID == "" || params.WorkflowID == "" || params.RunID == "" || params.NodeID == "" {
-		e.logger.Debug("skipping node.input emit due to missing context",
+		e.logger.Debug("skipping node.started emit due to missing context",
 			zap.String("workflow_id", params.WorkflowID),
 			zap.String("run_id", params.RunID),
 			zap.String("node_id", params.NodeID),
@@ -315,7 +322,7 @@ func (e *ArgusNodeInputEmitter) EmitNodeInput(ctx context.Context, params NodeIn
 
 	payload, prepErr := PreparePayload(ctx, params.Input, pathCtx, e.uploader, nil)
 	if prepErr != nil {
-		e.logger.Warn("PreparePayload failed for node.input, using inline fallback",
+		e.logger.Warn("PreparePayload failed for node.started input payload, using inline fallback",
 			zap.String("node_id", params.NodeID),
 			zap.Error(prepErr),
 		)
@@ -329,20 +336,28 @@ func (e *ArgusNodeInputEmitter) EmitNodeInput(ctx context.Context, params NodeIn
 		return nil
 	}
 
-	inputData := &event.NodeInputData{
-		Input:     payload,
-		ProjectID: params.ProjectID,
+	label := params.Label
+	if label == "" {
+		label = params.NodeID
 	}
-
-	evt := event.New(event.TypeNodeInput).
+	evt := event.New(event.TypeNodeStarted).
 		WithClient(params.ClientID).
 		WithWorkflow(params.WorkflowID).
 		WithRun(params.RunID).
 		WithNode(params.NodeID).
-		WithData(inputData)
+		WithData(&event.StartNode{
+			WorkflowID: params.WorkflowID,
+			RunID:      params.RunID,
+			ClientID:   params.ClientID,
+			ProjectID:  params.ProjectID,
+			NodeID:     params.NodeID,
+			Label:      label,
+			StartedAt:  time.Now().UnixMilli(),
+			Input:      payload,
+		})
 
 	if err := e.observer.Emit(ctx, evt); err != nil {
-		e.logger.Warn("failed to emit node.input observation event",
+		e.logger.Warn("failed to emit node.started observation event",
 			zap.String("workflow_id", params.WorkflowID),
 			zap.String("run_id", params.RunID),
 			zap.String("node_id", params.NodeID),

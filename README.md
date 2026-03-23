@@ -127,13 +127,9 @@ Argus emits structured observation events organized by hierarchy:
 Downstream consumers can distinguish these by attempting to parse `Data` as `TriggerWorkflow` first (it contains `workflow_id`, `run_id`, `client_id`, `type`, `payload`, timestamps), and falling back to `RunStartedData`.
 
 **Level 3 - Plugin/Node Lifecycle:**
-* `plugin.started` - Plugin/node execution started
-* `plugin.ended` - Plugin/node execution completed
 * `node.triggered` - Node (execution unit) dispatched by an orchestrator (e.g. Zeus). Payload: `TriggerNode`.
 * `node.started` - Node execution started on a worker. Payload: `StartNode` (includes optional node label and input payload metadata for the node or execution unit).
-* `node.ended`  - Node execution completed on a worker/orchestrator. Payload: `EndNode` (lifecycle only: status, timestamps, label, error).
-* `node.output` - Producer node output ready for storage. Payload: `NodeOutputData` (Output, HasError, ErrorMessage, ProjectID, ContainsNodes).
-* `node.input`  - Pre-built input for a consumer node. One event per consumer. Payload: `NodeInputData` (Input, ProjectID, SourceNodeID).
+* `node.ended`  - Node execution completed on a worker/orchestrator. Payload: `EndNode` (status, timestamps, label, output, error).
 
 ### Event Structure
 
@@ -217,22 +213,24 @@ evt := event.New(event.TypeRunEnded).
 err := obs.Emit(ctx, evt)
 ```
 
-#### Plugin Event (Level 3)
+#### Node Started Event (Level 3)
 
 ```go
-evt := event.New(event.TypePluginStarted).
+evt := event.New(event.TypeNodeStarted).
     WithClient("org_123").
     WithWorkflow("wf_abc").
     WithRun("run_xyz").
     WithNode("node_1").
-    WithData(&event.PluginStartedData{
-        ExecutionID:    "exec_001",
-        PluginType:     "plugin-http",
-        Label:          "HTTP Request",
-        ExecutionOrder: 1,
+    WithData(&event.StartNode{
+        WorkflowID:     "wf_abc",
+        RunID:          "run_xyz",
+        ClientID:       "org_123",
+        ProjectID:      "proj_1",
+        NodeID:         "node_1",
+        Label:          "HTTP Request Node",
         StartedAt:      time.Now().UnixMilli(),
-        InputPayload: &event.PayloadInfo{
-            InlineData: json.RawMessage(`{"url":"https://example.com"}`),
+        Input: &event.Payload{
+            InlineData: []byte(`{"url":"https://example.com"}`),
         },
     })
 
@@ -330,8 +328,6 @@ Events are published to NATS JetStream subjects (see `event.SubjectForEventType`
 * `OBSERVE.WORKFLOW.PUBLISHED` (includes Action: "publish" | "unpublish" in data)
 * `OBSERVE.WORKFLOW.RUN.STARTED`
 * `OBSERVE.WORKFLOW.RUN.ENDED`
-* `OBSERVE.WORKFLOW.PLUGIN.STARTED`
-* `OBSERVE.WORKFLOW.PLUGIN.ENDED`
 * `OBSERVE.WORKFLOW.NODE.TRIGGERED`
 * `OBSERVE.WORKFLOW.NODE.STARTED`
 * `OBSERVE.WORKFLOW.NODE.ENDED`
@@ -359,3 +355,19 @@ fmt.Println(evt.Type, evt.ClientID, evt.WorkflowID)
 4. **Monitor buffer**: If seeing `ErrBufferFull`, consider increasing `BufferSize` or setting `DropOnFull = false`
 5. **Event validation**: Events are automatically validated before publishing
 6. **Idempotency**: Use unique event IDs for deduplication (auto-generated if not provided)
+
+---
+
+## What's New
+
+### Legacy plugin terminal event removed (Mar 2026)
+- Legacy plugin terminal event constants, payload schema, and dedicated subject mapping were removed from Argus.
+- Emit terminal node lifecycle with `node.ended`; payload materialization is lifecycle-owned (`node.started` input, `node.ended` output).
+
+### Legacy plugin started event removed (Mar 2026)
+- Legacy plugin started event constants, payload schema, and dedicated subject mapping were removed from Argus.
+- Emit node running lifecycle with `node.started` (and optionally `node.triggered` for dispatch-time visibility).
+
+### Node payload events merged into lifecycle events (Mar 2026)
+- Removed standalone node input/output event contracts and subject mappings.
+- Input payloads are emitted on `node.started`; output payloads are emitted on `node.ended`.

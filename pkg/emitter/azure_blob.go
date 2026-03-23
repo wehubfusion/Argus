@@ -14,7 +14,7 @@ import (
 )
 
 // AzureBlobUploader implements BlobUploader for Azure Blob Storage using shared-key credentials.
-// Use for monitoring payloads (node.output, node.input) when a dedicated storage client is needed.
+// Use for monitoring lifecycle payloads when a dedicated storage client is needed.
 type AzureBlobUploader struct {
 	client        *azblob.Client
 	serviceURL    string

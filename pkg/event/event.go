@@ -13,8 +13,6 @@ const (
 	TypeWorkflowStarted   = "workflow.started"
 	TypeRunStarted        = "run.started"
 	TypeRunEnded          = "run.ended"
-	TypePluginStarted     = "plugin.started"
-	TypePluginEnded       = "plugin.ended"
 	// TypeNodeTriggered is a Level 3 node lifecycle event emitted when an
 	// execution unit (and its embedded nodes) is dispatched by an orchestrator
 	// such as Zeus. Payload: TriggerNode.
@@ -25,12 +23,6 @@ const (
 	// TypeNodeEnded is a Level 3 node lifecycle event emitted when a node
 	// finishes execution on a worker. Payload: EndNode.
 	TypeNodeEnded = "node.ended"
-	// TypeNodeOutput is a Level 3 event emitted when a producer node's output
-	// payload is ready for storage. Handled separately from node.ended. Payload: NodeOutputData.
-	TypeNodeOutput = "node.output"
-	// TypeNodeInput is a Level 3 event emitted for each consumer node with
-	// pre-built input payload. One event per consumer. Payload: NodeInputData.
-	TypeNodeInput = "node.input"
 )
 
 // Event is the universal observation event structure.
@@ -44,11 +36,11 @@ const (
 // Field Requirements by Level:
 // - Level 1 (Workflow Catalog): Requires client_id, workflow_id (no run_id)
 // - Level 2 (Run Lifecycle): Requires client_id, workflow_id, run_id
-// - Level 3 (Plugin Lifecycle): Requires client_id, workflow_id, run_id, node_id
+// - Level 3 (Node Lifecycle): Requires client_id, workflow_id, run_id, node_id
 type Event struct {
 	// === Routing & Identity ===
 	ID        string    `json:"id"`        // Unique ID (for JetStream deduplication)
-	Type      string    `json:"type"`      // Event type (e.g., "run.started", "plugin.ended")
+	Type      string    `json:"type"`      // Event type (e.g., "run.started", "node.ended")
 	Version   string    `json:"v"`         // Schema version; consumers should check before parsing Data and skip or log unknown versions
 	Timestamp time.Time `json:"timestamp"` // When event occurred
 
@@ -143,7 +135,7 @@ func (e *Event) ParseData(dest any) error {
 // Validation is level-aware:
 // - Level 1 (Workflow Catalog): Only requires client_id and workflow_id (no run_id)
 // - Level 2 (Run Lifecycle): Requires client_id, workflow_id, and run_id
-// - Level 3 (Plugin Lifecycle): Requires client_id, workflow_id, run_id, and node_id
+// - Level 3 (Node Lifecycle): Requires client_id, workflow_id, run_id, and node_id
 func (e *Event) Validate() error {
 	if e.ID == "" {
 		return ErrMissingEventID
@@ -170,7 +162,7 @@ func (e *Event) Validate() error {
 			return ErrMissingRunID
 		}
 
-	case TypePluginStarted, TypePluginEnded, TypeNodeTriggered, TypeNodeStarted, TypeNodeEnded, TypeNodeOutput, TypeNodeInput:
+	case TypeNodeTriggered, TypeNodeStarted, TypeNodeEnded:
 		if e.WorkflowID == "" {
 			return ErrMissingWorkflowID
 		}
@@ -303,24 +295,6 @@ type EndNode struct {
 	ConsumerInputs map[string]*Payload `json:"consumer_inputs,omitempty"` // consumerNodeID -> pre-built input (inline or blob) from Elysium
 }
 
-// NodeOutputData is the payload for node.output events. Stores producer node output
-// as-is (inline or blob). event.NodeID = producer node.
-type NodeOutputData struct {
-	Output        *Payload `json:"output"`
-	HasError      bool     `json:"has_error"`
-	ErrorMessage  string   `json:"error_message,omitempty"`
-	ProjectID     string   `json:"project_id,omitempty"`
-	ContainsNodes []string `json:"contains_nodes,omitempty"`
-}
-
-// NodeInputData is the payload for node.input events. One event per consumer node.
-// event.NodeID = consumer node ID; Input is the pre-built payload from Elysium.
-type NodeInputData struct {
-	Input         *Payload `json:"input"`
-	ProjectID     string   `json:"project_id,omitempty"`
-	SourceNodeID  string   `json:"source_node_id,omitempty"` // For debugging
-}
-
 // BlobRef represents a blob reference for observation payloads (used by plugin events).
 type BlobRef struct {
 	URL       string `json:"url"`
@@ -332,26 +306,6 @@ type BlobRef struct {
 type PayloadInfo struct {
 	InlineData    json.RawMessage `json:"inline_data,omitempty"`
 	BlobReference *BlobRef        `json:"blob_reference,omitempty"`
-}
-
-// PluginStartedData is the data payload for plugin.started events.
-type PluginStartedData struct {
-	ExecutionID    string       `json:"execution_id"`
-	PluginType     string       `json:"plugin_type"`
-	Label          string       `json:"label"`
-	ExecutionOrder int          `json:"execution_order"`
-	StartedAt      int64        `json:"started_at"`
-	InputPayload   *PayloadInfo `json:"input_payload,omitempty"`
-}
-
-// PluginEndedData is the data payload for plugin.ended events.
-type PluginEndedData struct {
-	ExecutionID   string       `json:"execution_id"`
-	Status        string       `json:"status"` // "success" | "failed" | "skipped"
-	EndedAt       int64        `json:"ended_at"`
-	OutputPayload *PayloadInfo `json:"output_payload,omitempty"`
-	HasError      bool         `json:"has_error"`
-	ErrorMessage  string       `json:"error_message,omitempty"`
 }
 
 type Payload struct {

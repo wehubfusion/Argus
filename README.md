@@ -130,7 +130,7 @@ Downstream consumers can distinguish these by attempting to parse `Data` as `Tri
 * `plugin.started` - Plugin/node execution started
 * `plugin.ended` - Plugin/node execution completed
 * `node.triggered` - Node (execution unit) dispatched by an orchestrator (e.g. Zeus). Payload: `TriggerNode`.
-* `node.started` - Node execution started on a worker. Payload: `StartNode` (includes input payload metadata for the node or execution unit).
+* `node.started` - Node execution started on a worker. Payload: `StartNode` (includes optional node label and input payload metadata for the node or execution unit).
 * `node.ended`  - Node execution completed on a worker/orchestrator. Payload: `EndNode` (lifecycle only: status, timestamps, label, error).
 * `node.output` - Producer node output ready for storage. Payload: `NodeOutputData` (Output, HasError, ErrorMessage, ProjectID, ContainsNodes).
 * `node.input`  - Pre-built input for a consumer node. One event per consumer. Payload: `NodeInputData` (Input, ProjectID, SourceNodeID).

@@ -13,8 +13,6 @@ const (
 	TypeWorkflowStarted   = "workflow.started"
 	TypeRunStarted        = "run.started"
 	TypeRunEnded          = "run.ended"
-	TypePluginStarted     = "plugin.started"
-	TypePluginEnded       = "plugin.ended"
 	// TypeNodeTriggered is a Level 3 node lifecycle event emitted when an
 	// execution unit (and its embedded nodes) is dispatched by an orchestrator
 	// such as Zeus. Payload: TriggerNode.
@@ -38,11 +36,11 @@ const (
 // Field Requirements by Level:
 // - Level 1 (Workflow Catalog): Requires client_id, workflow_id (no run_id)
 // - Level 2 (Run Lifecycle): Requires client_id, workflow_id, run_id
-// - Level 3 (Plugin Lifecycle): Requires client_id, workflow_id, run_id, node_id
+// - Level 3 (Node Lifecycle): Requires client_id, workflow_id, run_id, node_id
 type Event struct {
 	// === Routing & Identity ===
 	ID        string    `json:"id"`        // Unique ID (for JetStream deduplication)
-	Type      string    `json:"type"`      // Event type (e.g., "run.started", "plugin.ended")
+	Type      string    `json:"type"`      // Event type (e.g., "run.started", "node.ended")
 	Version   string    `json:"v"`         // Schema version; consumers should check before parsing Data and skip or log unknown versions
 	Timestamp time.Time `json:"timestamp"` // When event occurred
 
@@ -137,7 +135,7 @@ func (e *Event) ParseData(dest any) error {
 // Validation is level-aware:
 // - Level 1 (Workflow Catalog): Only requires client_id and workflow_id (no run_id)
 // - Level 2 (Run Lifecycle): Requires client_id, workflow_id, and run_id
-// - Level 3 (Plugin Lifecycle): Requires client_id, workflow_id, run_id, and node_id
+// - Level 3 (Node Lifecycle): Requires client_id, workflow_id, run_id, and node_id
 func (e *Event) Validate() error {
 	if e.ID == "" {
 		return ErrMissingEventID
@@ -164,7 +162,7 @@ func (e *Event) Validate() error {
 			return ErrMissingRunID
 		}
 
-	case TypePluginStarted, TypePluginEnded, TypeNodeTriggered, TypeNodeStarted, TypeNodeEnded:
+	case TypeNodeTriggered, TypeNodeStarted, TypeNodeEnded:
 		if e.WorkflowID == "" {
 			return ErrMissingWorkflowID
 		}
@@ -274,6 +272,7 @@ type StartNode struct {
 	ClientID   string   `json:"client_id"`
 	ProjectID  string   `json:"project_id,omitempty"` // For blob path and multi-tenant isolation
 	NodeID     string   `json:"node_id"`
+	Label      string   `json:"label,omitempty"` // Human-readable node label from execution plan
 	StartedAt  int64    `json:"started_at"`
 	Input      *Payload `json:"input"`
 }
@@ -293,7 +292,7 @@ type EndNode struct {
 	ProjectID          string                          `json:"project_id,omitempty"`           // For blob path and multi-tenant isolation
 	ContainsNodes      []string                        `json:"contains_nodes,omitempty"`       // Node IDs whose outputs are in this unit result (parent + embedded)
 	ExecutionID        string                          `json:"execution_id,omitempty"`         // Execution ID of the unit that produced this result
-	ConsumerInputHints map[string]*ConsumerInputHints  `json:"consumer_input_hints,omitempty"` // consumerNodeID -> hints for building consumer inputs
+	ConsumerInputs map[string]*Payload `json:"consumer_inputs,omitempty"` // consumerNodeID -> pre-built input (inline or blob) from Elysium
 }
 
 // BlobRef represents a blob reference for observation payloads (used by plugin events).
@@ -307,39 +306,6 @@ type BlobRef struct {
 type PayloadInfo struct {
 	InlineData    json.RawMessage `json:"inline_data,omitempty"`
 	BlobReference *BlobRef        `json:"blob_reference,omitempty"`
-}
-
-// PluginStartedData is the data payload for plugin.started events.
-type PluginStartedData struct {
-	ExecutionID    string       `json:"execution_id"`
-	PluginType     string       `json:"plugin_type"`
-	Label          string       `json:"label"`
-	ExecutionOrder int          `json:"execution_order"`
-	StartedAt      int64        `json:"started_at"`
-	InputPayload   *PayloadInfo `json:"input_payload,omitempty"`
-}
-
-// PluginEndedData is the data payload for plugin.ended events.
-type PluginEndedData struct {
-	ExecutionID   string       `json:"execution_id"`
-	Status        string       `json:"status"` // "success" | "failed" | "skipped"
-	EndedAt       int64        `json:"ended_at"`
-	OutputPayload *PayloadInfo `json:"output_payload,omitempty"`
-	HasError      bool         `json:"has_error"`
-	ErrorMessage  string       `json:"error_message,omitempty"`
-}
-
-// ConsumerInputHints describes how to build a consumer node's input from prior node outputs.
-// Used on EndNode events so Athena can backfill Node.Input for downstream nodes.
-type ConsumerInputHints struct {
-	Sources []SourceHint `json:"sources"`
-}
-
-// SourceHint points at a source node and fields within its output.
-type SourceHint struct {
-	NodeID string   `json:"nodeID"`
-	Label  string   `json:"label"`
-	Fields []string `json:"fields"` // e.g. ["name"] or ["name","age"]
 }
 
 type Payload struct {

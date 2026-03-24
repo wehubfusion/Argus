@@ -50,7 +50,7 @@ func TestWithRun(t *testing.T) {
 }
 
 func TestWithNode(t *testing.T) {
-	evt := event.New(event.TypePluginStarted).WithNode("node_1")
+	evt := event.New(event.TypeNodeStarted).WithNode("node_1")
 
 	if evt.NodeID != "node_1" {
 		t.Errorf("Expected node_id 'node_1', got %s", evt.NodeID)
@@ -136,7 +136,7 @@ func TestParseData(t *testing.T) {
 		"field2": 123,
 	}
 
-	evt := event.New(event.TypePluginEnded).WithData(data)
+	evt := event.New(event.TypeNodeEnded).WithData(data)
 
 	var parsed map[string]interface{}
 	if err := evt.ParseData(&parsed); err != nil {
@@ -202,8 +202,8 @@ func TestValidate_Level2_MissingRunID(t *testing.T) {
 	}
 }
 
-func TestValidate_Level3_PluginStarted(t *testing.T) {
-	evt := event.New(event.TypePluginStarted).
+func TestValidate_Level3_NodeStarted(t *testing.T) {
+	evt := event.New(event.TypeNodeStarted).
 		WithClient("org_123").
 		WithWorkflow("wf_abc").
 		WithRun("run_xyz").
@@ -215,7 +215,7 @@ func TestValidate_Level3_PluginStarted(t *testing.T) {
 }
 
 func TestValidate_Level3_MissingNodeID(t *testing.T) {
-	evt := event.New(event.TypePluginStarted).
+	evt := event.New(event.TypeNodeStarted).
 		WithClient("org_123").
 		WithWorkflow("wf_abc").
 		WithRun("run_xyz")
@@ -273,7 +273,7 @@ func TestFluentBuilder(t *testing.T) {
 		"test": "data",
 	}
 
-	evt := event.New(event.TypePluginEnded).
+	evt := event.New(event.TypeNodeEnded).
 		WithClient("org_123").
 		WithWorkflow("wf_abc").
 		WithRun("run_xyz").
@@ -423,74 +423,78 @@ func TestWithData_RunEndedData(t *testing.T) {
 	}
 }
 
-func TestWithData_PluginStartedData(t *testing.T) {
-	data := &event.PluginStartedData{
-		ExecutionID:    "exec_001",
-		PluginType:     "http",
-		Label:          "HTTP Request",
-		ExecutionOrder: 1,
-		StartedAt:      1704067200000,
-		InputPayload: &event.PayloadInfo{
-			InlineData: json.RawMessage(`{"url":"https://example.com"}`),
+func TestWithData_StartNode(t *testing.T) {
+	data := &event.StartNode{
+		WorkflowID: "wf_abc",
+		RunID:      "run_xyz",
+		ClientID:   "org_123",
+		ProjectID:  "proj_1",
+		NodeID:     "node_1",
+		Label:      "HTTP Request",
+		StartedAt:  1704067200000,
+		Input: &event.Payload{
+			InlineData: []byte(`{"url":"https://example.com"}`),
 		},
 	}
 
-	evt := event.New(event.TypePluginStarted).
+	evt := event.New(event.TypeNodeStarted).
 		WithClient("org_123").
 		WithWorkflow("wf_abc").
 		WithRun("run_xyz").
 		WithNode("node_1").
 		WithData(data)
 
-	var parsed event.PluginStartedData
+	var parsed event.StartNode
 	if err := evt.ParseData(&parsed); err != nil {
 		t.Fatalf("Failed to parse data: %v", err)
 	}
-	if parsed.ExecutionID != data.ExecutionID {
-		t.Errorf("Expected execution_id %s, got %s", data.ExecutionID, parsed.ExecutionID)
+	if parsed.Label != data.Label {
+		t.Errorf("Expected label %s, got %s", data.Label, parsed.Label)
 	}
-	if parsed.PluginType != data.PluginType {
-		t.Errorf("Expected plugin_type %s, got %s", data.PluginType, parsed.PluginType)
+	if parsed.StartedAt != data.StartedAt {
+		t.Errorf("Expected started_at %d, got %d", data.StartedAt, parsed.StartedAt)
 	}
-	if parsed.InputPayload == nil || string(parsed.InputPayload.InlineData) != string(data.InputPayload.InlineData) {
-		t.Errorf("Expected input_payload to match")
+	if parsed.Input == nil || string(parsed.Input.InlineData) != string(data.Input.InlineData) {
+		t.Errorf("Expected input payload to match")
 	}
 }
 
-func TestWithData_PluginEndedData(t *testing.T) {
-	data := &event.PluginEndedData{
-		ExecutionID: "exec_001",
-		Status:      "success",
-		EndedAt:     1704067260000,
-		OutputPayload: &event.PayloadInfo{
-			BlobReference: &event.BlobRef{
-				URL:       "https://blob.example.com/result.json",
-				SizeBytes: 2048,
+func TestWithData_EndNode(t *testing.T) {
+	data := &event.EndNode{
+		WorkflowID: "wf_abc",
+		RunID:      "run_xyz",
+		ClientID:   "org_123",
+		NodeID:     "node_1",
+		Label:      "HTTP Request",
+		EndedAt:    1704067260000,
+		Output: &event.Payload{
+			BlobReference: &event.BlobReference{
+				URL:  "https://blob.example.com/result.json",
+				Size: 2048,
 			},
 		},
-		HasError:     false,
-		ErrorMessage: "",
+		HasError: false,
 	}
 
-	evt := event.New(event.TypePluginEnded).
+	evt := event.New(event.TypeNodeEnded).
 		WithClient("org_123").
 		WithWorkflow("wf_abc").
 		WithRun("run_xyz").
 		WithNode("node_1").
 		WithData(data)
 
-	var parsed event.PluginEndedData
+	var parsed event.EndNode
 	if err := evt.ParseData(&parsed); err != nil {
 		t.Fatalf("Failed to parse data: %v", err)
 	}
-	if parsed.Status != data.Status {
-		t.Errorf("Expected status %s, got %s", data.Status, parsed.Status)
+	if parsed.EndedAt != data.EndedAt {
+		t.Errorf("Expected ended_at %d, got %d", data.EndedAt, parsed.EndedAt)
 	}
-	if parsed.OutputPayload == nil || parsed.OutputPayload.BlobReference == nil {
-		t.Fatal("Expected output_payload with blob_reference")
+	if parsed.Output == nil || parsed.Output.BlobReference == nil {
+		t.Fatal("Expected output with blob_reference")
 	}
-	if parsed.OutputPayload.BlobReference.URL != data.OutputPayload.BlobReference.URL {
-		t.Errorf("Expected blob URL %s, got %s", data.OutputPayload.BlobReference.URL, parsed.OutputPayload.BlobReference.URL)
+	if parsed.Output.BlobReference.URL != data.Output.BlobReference.URL {
+		t.Errorf("Expected blob URL %s, got %s", data.Output.BlobReference.URL, parsed.Output.BlobReference.URL)
 	}
 }
 

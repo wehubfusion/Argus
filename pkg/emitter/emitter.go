@@ -129,14 +129,14 @@ func BuildMonitoringPath(pathCtx PathContext) string {
 	)
 }
 
-// NodeOutputEmitter emits node.ended observation events with output payload.
+// NodeEndEmitter emits node.ended observation events with output payload.
 // Implementations are best-effort and must not panic.
-type NodeOutputEmitter interface {
-	EmitNodeEnd(ctx context.Context, params NodeOutputEmitParams) error
+type NodeEndEmitter interface {
+	EmitNodeEnd(ctx context.Context, params NodeEndEmitParams) error
 }
 
-// NodeOutputEmitParams contains all data needed to emit terminal node state.
-type NodeOutputEmitParams struct {
+// NodeEndEmitParams contains all data needed to emit terminal node state.
+type NodeEndEmitParams struct {
 	ClientID      string
 	ProjectID     string
 	WorkflowID    string
@@ -149,23 +149,23 @@ type NodeOutputEmitParams struct {
 	ContainsNodes []string
 }
 
-// ArgusNodeOutputEmitter implements NodeOutputEmitter using Argus observer.
-type ArgusNodeOutputEmitter struct {
+// ArgusNodeEndEmitter implements NodeEndEmitter using Argus observer.
+type ArgusNodeEndEmitter struct {
 	observer observer.Observer
 	uploader BlobUploader
 	logger   *zap.Logger
 }
 
-// NewArgusNodeOutputEmitter creates an emitter. observer and uploader may be nil; emission will no-op or fall back to inline.
-func NewArgusNodeOutputEmitter(
+// NewArgusNodeEndEmitter creates an emitter. observer and uploader may be nil; emission will no-op or fall back to inline.
+func NewArgusNodeEndEmitter(
 	obs observer.Observer,
 	uploader BlobUploader,
 	logger *zap.Logger,
-) *ArgusNodeOutputEmitter {
+) *ArgusNodeEndEmitter {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &ArgusNodeOutputEmitter{
+	return &ArgusNodeEndEmitter{
 		observer: obs,
 		uploader: uploader,
 		logger:   logger,
@@ -173,7 +173,7 @@ func NewArgusNodeOutputEmitter(
 }
 
 // EmitNodeEnd emits a node.ended event with output payload. Best-effort; logs errors, never panics.
-func (e *ArgusNodeOutputEmitter) EmitNodeEnd(ctx context.Context, params NodeOutputEmitParams) error {
+func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmitParams) error {
 	if e == nil || e.observer == nil {
 		return nil
 	}
@@ -254,14 +254,14 @@ func (e *ArgusNodeOutputEmitter) EmitNodeEnd(ctx context.Context, params NodeOut
 	return nil
 }
 
-// NodeInputEmitter emits node.started observation events with resolved payload.
+// NodeStartEmitter emits node.started observation events with resolved payload.
 // Implementations are best-effort and must not panic.
-type NodeInputEmitter interface {
-	EmitNodeStart(ctx context.Context, params NodeInputEmitParams) error
+type NodeStartEmitter interface {
+	EmitNodeStart(ctx context.Context, params NodeStartEmitParams) error
 }
 
-// NodeInputEmitParams contains all data needed to emit a node.started event.
-type NodeInputEmitParams struct {
+// NodeStartEmitParams contains all data needed to emit a node.started event.
+type NodeStartEmitParams struct {
 	ClientID   string
 	ProjectID  string
 	WorkflowID string
@@ -271,23 +271,23 @@ type NodeInputEmitParams struct {
 	Input      []byte
 }
 
-// ArgusNodeInputEmitter implements NodeInputEmitter using Argus observer.
-type ArgusNodeInputEmitter struct {
+// ArgusNodeStartEmitter implements NodeStartEmitter using Argus observer.
+type ArgusNodeStartEmitter struct {
 	observer observer.Observer
 	uploader BlobUploader
 	logger   *zap.Logger
 }
 
-// NewArgusNodeInputEmitter creates an emitter. observer and uploader may be nil; emission will no-op or fall back to inline.
-func NewArgusNodeInputEmitter(
+// NewArgusNodeStartEmitter creates an emitter. observer and uploader may be nil; emission will no-op or fall back to inline.
+func NewArgusNodeStartEmitter(
 	obs observer.Observer,
 	uploader BlobUploader,
 	logger *zap.Logger,
-) *ArgusNodeInputEmitter {
+) *ArgusNodeStartEmitter {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &ArgusNodeInputEmitter{
+	return &ArgusNodeStartEmitter{
 		observer: obs,
 		uploader: uploader,
 		logger:   logger,
@@ -295,7 +295,7 @@ func NewArgusNodeInputEmitter(
 }
 
 // EmitNodeStart emits a node.started event with resolved payload. Best-effort; logs errors, never panics.
-func (e *ArgusNodeInputEmitter) EmitNodeStart(ctx context.Context, params NodeInputEmitParams) error {
+func (e *ArgusNodeStartEmitter) EmitNodeStart(ctx context.Context, params NodeStartEmitParams) error {
 	if e == nil || e.observer == nil {
 		return nil
 	}

@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -12,27 +13,18 @@ import (
 )
 
 func TestNewObserver_Success(t *testing.T) {
-	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), logger)
+	obs, err := observer.NewObserver(NewMockJetStream(), observer.DefaultOptions(), zap.NewNop())
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 	if obs == nil {
-		t.Fatal("Expected observer to be created")
+		t.Fatal("Expected observer to be non-nil")
 	}
-
-	// Cleanup
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	obs.Close(ctx)
+	obs.Close(context.Background())
 }
 
 func TestNewObserver_NilJetStream(t *testing.T) {
-	logger := zap.NewNop()
-
-	obs, err := observer.NewObserver(nil, observer.DefaultOptions(), logger)
+	obs, err := observer.NewObserver(nil, observer.DefaultOptions(), zap.NewNop())
 	if err == nil {
 		t.Fatal("Expected error for nil JetStream context")
 	}
@@ -43,300 +35,161 @@ func TestNewObserver_NilJetStream(t *testing.T) {
 
 func TestNewObserver_DefaultOptions(t *testing.T) {
 	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	opts := observer.Options{} // Empty options
-	obs, err := observer.NewObserver(mockJS, opts, logger)
+	_, err := observer.NewObserver(mockJS, observer.Options{}, zap.NewNop())
 	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
+		t.Fatalf("Expected no error with empty options, got: %v", err)
 	}
-
-	// Verify defaults are applied by checking stream was created
-	streams := mockJS.GetStreams()
-	if len(streams) == 0 {
+	if len(mockJS.GetStreams()) == 0 {
 		t.Error("Expected stream to be created with default options")
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	obs.Close(ctx)
 }
 
 func TestNewObserver_CustomOptions(t *testing.T) {
 	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
+	opts := observer.DefaultOptions().WithStreamName("CUSTOM_STREAM")
 
-	opts := observer.DefaultOptions().
-		WithBufferSize(500).
-		WithStreamName("CUSTOM_STREAM").
-		WithDropOnFull(false)
-
-	obs, err := observer.NewObserver(mockJS, opts, logger)
+	_, err := observer.NewObserver(mockJS, opts, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
-
-	// Verify custom stream name was used
-	streams := mockJS.GetStreams()
-	if _, exists := streams["CUSTOM_STREAM"]; !exists {
+	if _, exists := mockJS.GetStreams()["CUSTOM_STREAM"]; !exists {
 		t.Error("Expected custom stream name to be used")
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	obs.Close(ctx)
 }
 
 func TestObserver_Emit_Success(t *testing.T) {
 	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), logger)
+	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create observer: %v", err)
 	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		obs.Close(ctx)
-	}()
+	defer obs.Close(context.Background())
 
 	evt := event.New(event.TypeRunStarted).
 		WithClient("client_123").
 		WithWorkflow("wf_456").
 		WithRun("run_789")
 
-	err = obs.Emit(context.Background(), evt)
-	if err != nil {
+	if err := obs.Emit(context.Background(), evt); err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	// Wait for event to be processed
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify event was published
+	// Emit is synchronous — message is available immediately
 	messages := mockJS.GetPublishedMessages()
-	if len(messages) == 0 {
-		t.Error("Expected event to be published")
+	if len(messages) != 1 {
+		t.Fatalf("Expected 1 published message, got %d", len(messages))
 	}
 
-	// Verify message content
-	if len(messages) > 0 {
-		var publishedEvent event.Event
-		if err := json.Unmarshal(messages[0].Data, &publishedEvent); err != nil {
-			t.Fatalf("Failed to unmarshal published event: %v", err)
-		}
-		if publishedEvent.Type != event.TypeRunStarted {
-			t.Errorf("Expected event type %s, got %s", event.TypeRunStarted, publishedEvent.Type)
-		}
-		if publishedEvent.ClientID != "client_123" {
-			t.Errorf("Expected client_id 'client_123', got %s", publishedEvent.ClientID)
-		}
+	var published event.Event
+	if err := json.Unmarshal(messages[0].Data, &published); err != nil {
+		t.Fatalf("Failed to unmarshal published event: %v", err)
+	}
+	if published.Type != event.TypeRunStarted {
+		t.Errorf("Expected type %s, got %s", event.TypeRunStarted, published.Type)
+	}
+	if published.ClientID != "client_123" {
+		t.Errorf("Expected client_id 'client_123', got %s", published.ClientID)
 	}
 }
 
 func TestObserver_Emit_ClosedObserver(t *testing.T) {
 	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), logger)
+	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create observer: %v", err)
 	}
 
-	// Close observer
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	obs.Close(ctx)
-	cancel()
+	obs.Close(context.Background())
 
-	// Try to emit after close
 	evt := event.New(event.TypeRunStarted).
 		WithClient("client_123").
 		WithWorkflow("wf_456").
 		WithRun("run_789")
 
 	err = obs.Emit(context.Background(), evt)
-	if err != observer.ErrObserverClosed {
+	if !errors.Is(err, observer.ErrObserverClosed) {
 		t.Errorf("Expected ErrObserverClosed, got: %v", err)
 	}
 }
 
-func TestObserver_Emit_BufferFull_DropOnFull(t *testing.T) {
+func TestObserver_Emit_PublishError(t *testing.T) {
 	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	opts := observer.DefaultOptions().
-		WithBufferSize(1). // Small buffer
-		WithDropOnFull(true)
-
-	obs, err := observer.NewObserver(mockJS, opts, logger)
+	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create observer: %v", err)
 	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		obs.Close(ctx)
-	}()
+	defer obs.Close(context.Background())
 
-	// Fill buffer
-	evt1 := event.New(event.TypeRunStarted).
+	mockJS.SetPublishError(errors.New("nats: stream unavailable"))
+
+	evt := event.New(event.TypeRunStarted).
 		WithClient("client_123").
 		WithWorkflow("wf_456").
 		WithRun("run_789")
-	obs.Emit(context.Background(), evt1)
 
-	// Try to emit another event (should drop)
-	evt2 := event.New(event.TypeRunEnded).
-		WithClient("client_123").
-		WithWorkflow("wf_456").
-		WithRun("run_789")
-	err = obs.Emit(context.Background(), evt2)
-	if err != observer.ErrBufferFull {
-		t.Errorf("Expected ErrBufferFull, got: %v", err)
+	err = obs.Emit(context.Background(), evt)
+	if err == nil {
+		t.Fatal("Expected error from publish failure, got nil")
 	}
 }
 
-func TestObserver_Emit_BufferFull_Block(t *testing.T) {
-	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	opts := observer.DefaultOptions().
-		WithBufferSize(1). // Small buffer
-		WithDropOnFull(false) // Block instead of drop
-
-	obs, err := observer.NewObserver(mockJS, opts, logger)
+func TestObserver_Emit_InvalidEvent(t *testing.T) {
+	obs, err := observer.NewObserver(NewMockJetStream(), observer.DefaultOptions(), zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create observer: %v", err)
 	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		obs.Close(ctx)
-	}()
+	defer obs.Close(context.Background())
 
-	// Fill buffer with first event
-	evt1 := event.New(event.TypeRunStarted).
-		WithClient("client_123").
-		WithWorkflow("wf_456").
-		WithRun("run_789")
-	if err := obs.Emit(context.Background(), evt1); err != nil {
-		t.Fatalf("Failed to emit first event: %v", err)
+	// Event with no ClientID should fail validation
+	evt := &event.Event{
+		Type: event.TypeRunStarted,
 	}
-
-	// Small delay to ensure first event is in buffer but not yet processed
-	time.Sleep(10 * time.Millisecond)
-
-	// Try to emit another event with very short timeout (should block then timeout)
-	// Note: This test is timing-dependent. The worker might process the first event
-	// quickly, making the buffer available. We use a very short timeout to increase
-	// the chance of hitting the timeout.
-	evt2 := event.New(event.TypeRunEnded).
-		WithClient("client_123").
-		WithWorkflow("wf_456").
-		WithRun("run_789")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-	defer cancel()
-
-	// Small delay to ensure context timeout happens
-	time.Sleep(5 * time.Millisecond)
-
-	err = obs.Emit(ctx, evt2)
-	// Note: This test may be flaky because the worker processes events asynchronously.
-	// If the first event is processed quickly, the buffer will have space and this will succeed.
-	// We're testing that the blocking mechanism exists, not that it always times out.
-	if err != nil && err != observer.ErrObserverClosed {
-		// Got an error (timeout or cancellation) - this is expected behavior
-		if ctx.Err() == context.DeadlineExceeded || ctx.Err() == context.Canceled {
-			// Expected timeout/cancellation error
-			return
-		}
+	if err := obs.Emit(context.Background(), evt); err == nil {
+		t.Error("Expected validation error for incomplete event, got nil")
 	}
-	// If we get here, the event was sent successfully (buffer had space)
-	// This is acceptable behavior - the test verifies the code path exists
 }
 
 func TestObserver_Emit_ContextCancellation(t *testing.T) {
-	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	opts := observer.DefaultOptions().WithBufferSize(1).WithDropOnFull(false)
-	obs, err := observer.NewObserver(mockJS, opts, logger)
+	obs, err := observer.NewObserver(NewMockJetStream(), observer.DefaultOptions(), zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create observer: %v", err)
 	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		obs.Close(ctx)
-	}()
-
-	// Fill the buffer first to force blocking behavior
-	evt1 := event.New(event.TypeRunStarted).
-		WithClient("client_123").
-		WithWorkflow("wf_456").
-		WithRun("run_789")
-	if err := obs.Emit(context.Background(), evt1); err != nil {
-		t.Fatalf("Failed to emit first event: %v", err)
-	}
-
-	// Small delay to ensure first event is in buffer
-	time.Sleep(10 * time.Millisecond)
-
-	// Now try to emit with cancelled context - should hit the blocking select
-	evt2 := event.New(event.TypeRunEnded).
-		WithClient("client_123").
-		WithWorkflow("wf_456").
-		WithRun("run_789")
+	defer obs.Close(context.Background())
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
+	cancel() // already cancelled
 
-	err = obs.Emit(ctx, evt2)
-	// The select statement checks ctx.Done() in the blocking case
-	// If buffer is full and context is cancelled, we should get an error
-	if err == nil {
-		// If buffer had space, the first select would succeed and no error
-		// This is acceptable - we're testing the cancellation path exists
-		// In a real scenario with a full buffer, cancellation would be detected
-	} else if ctx.Err() == context.Canceled {
-		// Got cancellation error - this is the expected behavior
-		return
-	}
+	evt := event.New(event.TypeRunStarted).
+		WithClient("client_123").
+		WithWorkflow("wf_456").
+		WithRun("run_789")
+
+	// The cancelled context is passed to publisher.Publish which honours it.
+	// With a mock publisher the call may succeed before context is checked;
+	// the important thing is that no panic occurs.
+	_ = obs.Emit(ctx, evt)
 }
 
 func TestObserver_Emit_AutoPopulation(t *testing.T) {
 	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), logger)
+	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create observer: %v", err)
 	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		obs.Close(ctx)
-	}()
+	defer obs.Close(context.Background())
 
-	// Create event without ID, Timestamp, Version
 	evt := &event.Event{
-		Type:      event.TypeRunStarted,
-		ClientID:  "client_123",
+		Type:       event.TypeRunStarted,
+		ClientID:   "client_123",
 		WorkflowID: "wf_456",
-		RunID:     "run_789",
+		RunID:      "run_789",
 	}
 
-	err = obs.Emit(context.Background(), evt)
-	if err != nil {
+	if err := obs.Emit(context.Background(), evt); err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	// Wait for processing
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify auto-population
+	// Fields should be auto-populated in place (synchronous, no race)
 	if evt.ID == "" {
 		t.Error("Expected ID to be auto-populated")
 	}
@@ -348,130 +201,82 @@ func TestObserver_Emit_AutoPopulation(t *testing.T) {
 	}
 }
 
-func TestObserver_Close_GracefulShutdown(t *testing.T) {
+func TestObserver_Emit_Multiple(t *testing.T) {
 	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), logger)
+	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create observer: %v", err)
 	}
+	defer obs.Close(context.Background())
 
-	// Emit some events
-	for i := 0; i < 5; i++ {
+	const count = 5
+	for i := 0; i < count; i++ {
 		evt := event.New(event.TypeRunStarted).
 			WithClient("client_123").
 			WithWorkflow("wf_456").
 			WithRun("run_789")
-		obs.Emit(context.Background(), evt)
+		if err := obs.Emit(context.Background(), evt); err != nil {
+			t.Fatalf("Emit %d failed: %v", i, err)
+		}
 	}
 
-	// Close observer
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = obs.Close(ctx)
-	if err != nil {
-		t.Fatalf("Expected no error on close, got: %v", err)
-	}
-
-	// Wait a bit for events to be processed
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify events were published
-	messages := mockJS.GetPublishedMessages()
-	if len(messages) < 5 {
-		t.Errorf("Expected at least 5 messages, got %d", len(messages))
-	}
-}
-
-func TestObserver_Close_DrainsEvents(t *testing.T) {
-	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	opts := observer.DefaultOptions().WithBufferSize(10)
-	obs, err := observer.NewObserver(mockJS, opts, logger)
-	if err != nil {
-		t.Fatalf("Failed to create observer: %v", err)
-	}
-
-	// Fill buffer with events
-	for i := 0; i < 10; i++ {
-		evt := event.New(event.TypeRunStarted).
-			WithClient("client_123").
-			WithWorkflow("wf_456").
-			WithRun("run_789")
-		obs.Emit(context.Background(), evt)
-	}
-
-	// Close immediately (should drain)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = obs.Close(ctx)
-	if err != nil {
-		t.Fatalf("Expected no error on close, got: %v", err)
-	}
-
-	// Wait for drain
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify all events were published
-	messages := mockJS.GetPublishedMessages()
-	if len(messages) < 10 {
-		t.Errorf("Expected at least 10 messages after drain, got %d", len(messages))
-	}
-}
-
-func TestObserver_Close_Timeout(t *testing.T) {
-	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), logger)
-	if err != nil {
-		t.Fatalf("Failed to create observer: %v", err)
-	}
-
-	// Close with very short timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-	defer cancel()
-
-	// Wait a bit to ensure timeout
-	time.Sleep(10 * time.Millisecond)
-
-	err = obs.Close(ctx)
-	// Note: The actual timeout behavior depends on implementation
-	// We're just checking it doesn't panic
-	if err != nil && err.Error() == "" {
-		t.Error("Expected error message on timeout")
+	if n := len(mockJS.GetPublishedMessages()); n != count {
+		t.Errorf("Expected %d published messages, got %d", count, n)
 	}
 }
 
 func TestObserver_Close_Idempotent(t *testing.T) {
-	mockJS := NewMockJetStream()
-	logger := zap.NewNop()
-
-	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), logger)
+	obs, err := observer.NewObserver(NewMockJetStream(), observer.DefaultOptions(), zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create observer: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx := context.Background()
+	if err := obs.Close(ctx); err != nil {
+		t.Errorf("First Close failed: %v", err)
+	}
+	if err := obs.Close(ctx); err != nil {
+		t.Errorf("Second Close failed: %v", err)
+	}
+	if err := obs.Close(ctx); err != nil {
+		t.Errorf("Third Close failed: %v", err)
+	}
+}
+
+func TestObserver_Close_BlocksNewEmits(t *testing.T) {
+	mockJS := NewMockJetStream()
+	obs, err := observer.NewObserver(mockJS, observer.DefaultOptions(), zap.NewNop())
+	if err != nil {
+		t.Fatalf("Failed to create observer: %v", err)
+	}
+
+	obs.Close(context.Background())
+
+	// Any emit after close must return ErrObserverClosed, never publish
+	for i := 0; i < 3; i++ {
+		evt := event.New(event.TypeRunStarted).
+			WithClient("c").WithWorkflow("w").WithRun("r")
+		if err := obs.Emit(context.Background(), evt); !errors.Is(err, observer.ErrObserverClosed) {
+			t.Errorf("Emit %d after close: expected ErrObserverClosed, got %v", i, err)
+		}
+	}
+	if n := len(mockJS.GetPublishedMessages()); n != 0 {
+		t.Errorf("Expected 0 published messages after close, got %d", n)
+	}
+}
+
+func TestObserver_Close_ContextIgnored(t *testing.T) {
+	obs, err := observer.NewObserver(NewMockJetStream(), observer.DefaultOptions(), zap.NewNop())
+	if err != nil {
+		t.Fatalf("Failed to create observer: %v", err)
+	}
+
+	// Close with an already-expired context — should still succeed (no drain needed)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 	defer cancel()
+	time.Sleep(time.Millisecond)
 
-	// Close multiple times
-	err1 := obs.Close(ctx)
-	err2 := obs.Close(ctx)
-	err3 := obs.Close(ctx)
-
-	// All should succeed (idempotent)
-	if err1 != nil {
-		t.Errorf("First close failed: %v", err1)
-	}
-	if err2 != nil {
-		t.Errorf("Second close failed: %v", err2)
-	}
-	if err3 != nil {
-		t.Errorf("Third close failed: %v", err3)
+	if err := obs.Close(ctx); err != nil {
+		t.Errorf("Expected no error from Close with expired context, got: %v", err)
 	}
 }

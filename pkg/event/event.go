@@ -2,6 +2,7 @@ package event
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,6 +54,10 @@ type Event struct {
 	// === Event-Specific Data ===
 	// Raw JSON - consumer parses based on Type
 	Data json.RawMessage `json:"data,omitempty"`
+
+	// marshalErr is set when WithData fails to json.Marshal the payload.
+	// It is intentionally not serialized; Validate() will fail fast if present.
+	marshalErr error `json:"-"`
 }
 
 // New creates a new event with generated ID and timestamp.
@@ -96,15 +101,17 @@ func (e *Event) WithNode(nodeID string) *Event {
 func (e *Event) WithData(data any) *Event {
 	if data == nil {
 		e.Data = nil
+		e.marshalErr = nil
 		return e
 	}
 	bytes, err := json.Marshal(data)
 	if err != nil {
-		// Store error as data (fail gracefully)
-		e.Data = json.RawMessage(`{"_marshal_error":"` + err.Error() + `"}`)
+		e.Data = nil
+		e.marshalErr = fmt.Errorf("event data marshal error: %w", err)
 		return e
 	}
 	e.Data = bytes
+	e.marshalErr = nil
 	return e
 }
 
@@ -145,6 +152,9 @@ func (e *Event) Validate() error {
 	}
 	if e.ClientID == "" {
 		return ErrMissingClientID
+	}
+	if e.marshalErr != nil {
+		return e.marshalErr
 	}
 
 	// Level-based validation

@@ -8,16 +8,6 @@ import (
 
 // Options configures the Observer behavior
 type Options struct {
-	// BufferSize is the size of the internal channel buffer for events
-	// Default: 1000
-	BufferSize int
-
-	// DropOnFull determines behavior when buffer is full
-	// If true, new events are dropped when buffer is full
-	// If false, Emit will block until buffer has space
-	// Default: true (drop-on-pressure)
-	DropOnFull bool
-
 	// StreamName is the JetStream stream name for observation events (default: event.StreamName)
 	StreamName string
 
@@ -37,25 +27,11 @@ type Options struct {
 // DefaultOptions returns default options for the Observer
 func DefaultOptions() Options {
 	return Options{
-		BufferSize:     1000,
-		DropOnFull:     true,
 		StreamName:     event.StreamName,
 		StreamMaxAge:   30 * 24 * time.Hour, // 30 days
 		StreamMaxMsgs:  1000000,
 		PublishTimeout: 5 * time.Second,
 	}
-}
-
-// WithBufferSize sets the buffer size
-func (o Options) WithBufferSize(size int) Options {
-	o.BufferSize = size
-	return o
-}
-
-// WithDropOnFull sets the drop-on-full behavior
-func (o Options) WithDropOnFull(drop bool) Options {
-	o.DropOnFull = drop
-	return o
 }
 
 // WithStreamName sets the stream name

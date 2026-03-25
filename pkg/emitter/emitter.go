@@ -189,7 +189,7 @@ func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmi
 	// Marshal output as-is (no label wrapping)
 	jsonBytes, err := json.Marshal(params.Output)
 	if err != nil {
-		e.logger.Warn("failed to marshal node output for observation",
+		e.logger.Error("failed to marshal node output for observation",
 			zap.String("node_id", params.NodeID),
 			zap.Error(err),
 		)
@@ -228,21 +228,21 @@ func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmi
 		WithRun(params.RunID).
 		WithNode(params.NodeID).
 		WithData(&event.EndNode{
-			WorkflowID:   params.WorkflowID,
-			RunID:        params.RunID,
-			ClientID:     params.ClientID,
-			ProjectID:    params.ProjectID,
-			NodeID:       params.NodeID,
-			Label:        params.Label,
-			EndedAt:      time.Now().UnixMilli(),
-			Output:       payload,
-			HasError:     params.HasError,
-			ErrorMessage: params.ErrorMessage,
+			WorkflowID:    params.WorkflowID,
+			RunID:         params.RunID,
+			ClientID:      params.ClientID,
+			ProjectID:     params.ProjectID,
+			NodeID:        params.NodeID,
+			Label:         params.Label,
+			EndedAt:       time.Now().UnixMilli(),
+			Output:        payload,
+			HasError:      params.HasError,
+			ErrorMessage:  params.ErrorMessage,
 			ContainsNodes: params.ContainsNodes,
 		})
 
 	if err := e.observer.Emit(ctx, evt); err != nil {
-		e.logger.Warn("failed to emit node.ended observation event",
+		e.logger.Error("failed to emit node.ended observation event",
 			zap.String("workflow_id", params.WorkflowID),
 			zap.String("run_id", params.RunID),
 			zap.String("node_id", params.NodeID),
@@ -357,7 +357,7 @@ func (e *ArgusNodeStartEmitter) EmitNodeStart(ctx context.Context, params NodeSt
 		})
 
 	if err := e.observer.Emit(ctx, evt); err != nil {
-		e.logger.Warn("failed to emit node.started observation event",
+		e.logger.Error("failed to emit node.started observation event",
 			zap.String("workflow_id", params.WorkflowID),
 			zap.String("run_id", params.RunID),
 			zap.String("node_id", params.NodeID),

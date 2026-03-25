@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// PublisherConfig holds configuration for the NATS publisher
+// PublisherConfig holds configuration for the NATS publisher.
 type PublisherConfig struct {
 	StreamName     string
 	StreamMaxAge   time.Duration
@@ -18,15 +18,15 @@ type PublisherConfig struct {
 	PublishTimeout time.Duration
 }
 
-// Publisher handles publishing messages to NATS JetStream
+// Publisher handles publishing messages to NATS JetStream.
+// All methods are safe for concurrent use.
 type Publisher struct {
-	js          nats.JetStreamContext
-	config      PublisherConfig
-	logger      *zap.Logger
-	streamSetup bool
+	js     nats.JetStreamContext
+	config PublisherConfig
+	logger *zap.Logger
 }
 
-// NewPublisher creates a new NATS publisher
+// NewPublisher creates a new Publisher and ensures the target stream exists.
 func NewPublisher(js nats.JetStreamContext, config PublisherConfig, logger *zap.Logger) (*Publisher, error) {
 	if js == nil {
 		return nil, fmt.Errorf("jetstream context cannot be nil")
@@ -35,42 +35,27 @@ func NewPublisher(js nats.JetStreamContext, config PublisherConfig, logger *zap.
 		logger, _ = zap.NewProduction()
 	}
 
-	p := &Publisher{
-		js:     js,
-		config: config,
-		logger: logger,
-	}
-
-	// Ensure the observation stream exists
+	p := &Publisher{js: js, config: config, logger: logger}
 	if err := p.ensureStream(); err != nil {
 		return nil, fmt.Errorf("failed to ensure observation stream: %w", err)
 	}
-
 	return p, nil
 }
 
-// ensureStream creates the OBSERVATION stream if it doesn't exist
+// ensureStream creates the observation stream if it does not already exist.
 func (p *Publisher) ensureStream() error {
-	if p.streamSetup {
-		return nil
-	}
-
-	// Check if stream already exists
 	streamInfo, err := p.js.StreamInfo(p.config.StreamName)
 	if err != nil && err != nats.ErrStreamNotFound {
 		return fmt.Errorf("failed to check stream info: %w", err)
 	}
 
 	if streamInfo != nil {
-		// Stream already exists
 		p.logger.Info("Observation stream already exists",
 			zap.String("stream", p.config.StreamName),
 			zap.Uint64("messages", streamInfo.State.Msgs))
-		p.streamSetup = true
 		return nil
 	}
 
-	// Create stream with custom config
 	streamConfig := &nats.StreamConfig{
 		Name:     p.config.StreamName,
 		Subjects: []string{event.SubjectPatternAll},
@@ -79,9 +64,7 @@ func (p *Publisher) ensureStream() error {
 		MaxMsgs:  p.config.StreamMaxMsgs,
 		Replicas: 1,
 	}
-
-	_, err = p.js.AddStream(streamConfig)
-	if err != nil {
+	if _, err := p.js.AddStream(streamConfig); err != nil {
 		return fmt.Errorf("failed to create observation stream: %w", err)
 	}
 
@@ -90,88 +73,53 @@ func (p *Publisher) ensureStream() error {
 		zap.Strings("subjects", streamConfig.Subjects),
 		zap.Duration("max_age", streamConfig.MaxAge),
 		zap.Int64("max_msgs", streamConfig.MaxMsgs))
-
-	p.streamSetup = true
 	return nil
 }
 
-// Publish publishes a message to JetStream with deduplication support
-// subject: The NATS subject to publish to
-// msgID: The message ID for deduplication
-// data: The message payload as raw bytes
+// Publish publishes a message to JetStream with exactly-once deduplication support.
+//
+// It blocks until the server acknowledges receipt, the caller's context is cancelled,
+// or PublishTimeout elapses — whichever comes first. No goroutines are spawned;
+// backpressure is applied directly to the caller.
+//
+// nats.Context(publishCtx) passes the context into the JetStream ack-wait select
+// loop (RequestMsgWithContext), so cancellation is handled natively by the NATS
+// client rather than via a wrapper goroutine.
 func (p *Publisher) Publish(ctx context.Context, subject, msgID string, data []byte) error {
 	if subject == "" {
-		return fmt.Errorf("subject cannot be empty")
+		return fmt.Errorf("publisher: subject cannot be empty")
 	}
 	if msgID == "" {
-		return fmt.Errorf("message ID cannot be empty")
+		return fmt.Errorf("publisher: message ID cannot be empty")
 	}
 	if len(data) == 0 {
-		return fmt.Errorf("data cannot be empty")
+		return fmt.Errorf("publisher: data cannot be empty")
 	}
 
-	// Publish with deduplication support
-	publishOpts := []nats.PubOpt{
-		nats.MsgId(msgID),
+	// Fast-path: reject immediately if the caller's context is already done.
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("publisher: context already done: %w", err)
 	}
 
-	// Create context with timeout
+	// Apply per-publish timeout as a tighter bound on the caller's context.
+	// nats.Context(publishCtx) is mutually exclusive with nats.AckWait, so
+	// we do NOT also pass an AckWait option.
 	publishCtx, cancel := context.WithTimeout(ctx, p.config.PublishTimeout)
 	defer cancel()
 
-	// Publish in goroutine to respect context
-	type publishResult struct {
-		ack *nats.PubAck
-		err error
-	}
-	resultCh := make(chan publishResult, 1)
-	go func() {
-		ack, err := p.js.Publish(subject, data, publishOpts...)
-		resultCh <- publishResult{ack: ack, err: err}
-	}()
-
-	var result publishResult
-	select {
-	case <-publishCtx.Done():
-		p.logger.Warn("Publish cancelled",
-			zap.String("msg_id", msgID),
-			zap.String("subject", subject),
-			zap.Error(publishCtx.Err()))
-		return fmt.Errorf("publish cancelled: %w", publishCtx.Err())
-	case result = <-resultCh:
+	ack, err := p.js.Publish(subject, data,
+		nats.MsgId(msgID),
+		nats.Context(publishCtx),
+	)
+	if err != nil {
+		return fmt.Errorf("publisher: publish failed: %w", err)
 	}
 
-	// Handle publish error (nack scenario)
-	if result.err != nil {
-		p.logger.Error("Failed to publish message (nack)",
-			zap.String("msg_id", msgID),
-			zap.String("subject", subject),
-			zap.Error(result.err))
-		return fmt.Errorf("failed to publish message to JetStream: %w", result.err)
-	}
-
-	// Verify PubAck was received (ack scenario)
-	if result.ack == nil {
-		p.logger.Error("Publish returned nil PubAck (nack)",
-			zap.String("msg_id", msgID),
-			zap.String("subject", subject))
-		return fmt.Errorf("publish returned nil PubAck - message not acknowledged")
-	}
-
-	// Verify PubAck contains valid stream information
-	if result.ack.Stream == "" {
-		p.logger.Warn("Publish returned PubAck with empty stream",
-			zap.String("msg_id", msgID),
-			zap.String("subject", subject))
-		// This is unusual but not necessarily an error - log and continue
-	}
-
-	// Log successful ack with sequence number
-	p.logger.Debug("Published message (ack)",
+	p.logger.Debug("Published message",
 		zap.String("msg_id", msgID),
 		zap.String("subject", subject),
-		zap.String("stream", result.ack.Stream),
-		zap.Uint64("sequence", result.ack.Sequence))
+		zap.String("stream", ack.Stream),
+		zap.Uint64("sequence", ack.Sequence))
 
 	return nil
 }

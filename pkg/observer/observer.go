@@ -1,5 +1,7 @@
-// Package observer provides a non-blocking interface for emitting observation events to NATS JetStream.
-// Use NewObserver to create an observer. The default stream name matches event.StreamName.
+// Package observer provides a synchronous interface for emitting observation events to NATS JetStream.
+// Emit publishes directly to NATS and returns the actual delivery result, so callers know
+// immediately whether the event reached the broker. Use NewObserver to create an observer.
+// The default stream name matches event.StreamName.
 package observer
 
 import (
@@ -14,32 +16,30 @@ import (
 	"go.uber.org/zap"
 )
 
-// Observer provides a non-blocking interface for emitting observation events
+// Observer provides a synchronous, thread-safe interface for emitting observation events.
+// Each Emit call publishes directly to NATS JetStream; the return value reflects actual delivery.
 type Observer interface {
-	// Emit emits an observation event asynchronously
-	// Returns ErrBufferFull if buffer is full and DropOnFull is true
-	// Returns ErrObserverClosed if observer is closed
+	// Emit validates and publishes an observation event to NATS JetStream.
+	// Returns ErrObserverClosed if the observer has been closed.
+	// Returns a wrapped error if validation, serialization, or publish fails.
 	Emit(ctx context.Context, evt *event.Event) error
 
-	// Close gracefully shuts down the observer
-	// Drains the event buffer and ensures all events are published
+	// Close marks the observer as closed. Subsequent Emit calls return ErrObserverClosed.
+	// Safe to call multiple times (idempotent).
 	Close(ctx context.Context) error
 }
 
-// observer implements the Observer interface with async processing
+// observer implements the Observer interface with synchronous publishing.
 type observer struct {
 	publisher *nats.Publisher
 	options   Options
 	logger    *zap.Logger
-	eventChan chan *event.Event
-	wg        sync.WaitGroup
 	closeOnce sync.Once
-	closed    chan struct{}
 	mu        sync.RWMutex
 	isClosed  bool
 }
 
-// NewObserver creates a new Observer instance
+// NewObserver creates a new Observer instance.
 func NewObserver(js natsclient.JetStreamContext, opts Options, logger *zap.Logger) (Observer, error) {
 	if js == nil {
 		return nil, fmt.Errorf("jetstream context cannot be nil")
@@ -49,9 +49,6 @@ func NewObserver(js natsclient.JetStreamContext, opts Options, logger *zap.Logge
 	}
 
 	// Apply defaults
-	if opts.BufferSize <= 0 {
-		opts = opts.WithBufferSize(DefaultOptions().BufferSize)
-	}
 	if opts.StreamName == "" {
 		opts = opts.WithStreamName(DefaultOptions().StreamName)
 	}
@@ -65,7 +62,6 @@ func NewObserver(js natsclient.JetStreamContext, opts Options, logger *zap.Logge
 		opts = opts.WithPublishTimeout(DefaultOptions().PublishTimeout)
 	}
 
-	// Create internal publisher
 	publisherConfig := nats.PublisherConfig{
 		StreamName:     opts.StreamName,
 		StreamMaxAge:   opts.StreamMaxAge,
@@ -77,27 +73,18 @@ func NewObserver(js natsclient.JetStreamContext, opts Options, logger *zap.Logge
 		return nil, fmt.Errorf("failed to create publisher: %w", err)
 	}
 
-	obs := &observer{
+	logger.Info("Observer created",
+		zap.String("stream_name", opts.StreamName))
+
+	return &observer{
 		publisher: publisher,
 		options:   opts,
 		logger:    logger,
-		eventChan: make(chan *event.Event, opts.BufferSize),
-		closed:    make(chan struct{}),
-	}
-
-	// Start background worker
-	obs.wg.Add(1)
-	go obs.worker()
-
-	logger.Info("Observer created",
-		zap.Int("buffer_size", opts.BufferSize),
-		zap.Bool("drop_on_full", opts.DropOnFull),
-		zap.String("stream_name", opts.StreamName))
-
-	return obs, nil
+	}, nil
 }
 
-// Emit emits an observation event asynchronously
+// Emit validates and publishes an observation event synchronously.
+// Auto-populates ID, Timestamp, and Version if absent.
 func (o *observer) Emit(ctx context.Context, evt *event.Event) error {
 	o.mu.RLock()
 	closed := o.isClosed
@@ -107,7 +94,7 @@ func (o *observer) Emit(ctx context.Context, evt *event.Event) error {
 		return ErrObserverClosed
 	}
 
-	// Ensure event has required fields
+	// Auto-populate required fields
 	if evt.ID == "" {
 		evt.ID = fmt.Sprintf("%s-%d", evt.WorkflowID, time.Now().UnixNano())
 	}
@@ -118,205 +105,44 @@ func (o *observer) Emit(ctx context.Context, evt *event.Event) error {
 		evt.Version = "v1"
 	}
 
-	// Non-blocking send to buffer
-	select {
-	case o.eventChan <- evt:
-		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("emit cancelled: %w", ctx.Err())
-	default:
-		// Buffer is full
-		if o.options.DropOnFull {
-			o.logger.Warn("Event buffer full, dropping event",
-				zap.String("event_id", evt.ID),
-				zap.String("event_type", evt.Type),
-				zap.String("workflow_id", evt.WorkflowID),
-				zap.String("run_id", evt.RunID))
-			return ErrBufferFull
-		}
-
-		// Block until buffer has space
-		select {
-		case o.eventChan <- evt:
-			return nil
-		case <-ctx.Done():
-			return fmt.Errorf("emit cancelled: %w", ctx.Err())
-		case <-o.closed:
-			return ErrObserverClosed
-		}
-	}
+	return o.publishEvent(ctx, evt)
 }
 
-// worker processes events from the buffer and publishes them
-func (o *observer) worker() {
-	defer o.wg.Done()
-
-	o.logger.Debug("Observer worker started")
-
-	for {
-		select {
-		case <-o.closed:
-			// Drain remaining events before exiting
-			o.drainEvents()
-			o.logger.Debug("Observer worker stopped")
-			return
-		case evt, ok := <-o.eventChan:
-			if !ok {
-				// Channel closed, drain and exit
-				o.drainEvents()
-				o.logger.Debug("Observer worker stopped (channel closed)")
-				return
-			}
-
-			// Validate and serialize event before publishing
-			if err := evt.Validate(); err != nil {
-				o.logger.Error("Invalid event, skipping",
-					zap.String("event_id", evt.ID),
-					zap.String("event_type", evt.Type),
-					zap.Error(err))
-				continue
-			}
-
-			// Get subject for event type
-			subject := event.SubjectForEventType(evt.Type)
-			if subject == "" {
-				o.logger.Error("Unknown event type, skipping",
-					zap.String("event_id", evt.ID),
-					zap.String("event_type", evt.Type))
-				continue
-			}
-
-			// Serialize event to JSON
-			data, err := evt.Bytes()
-			if err != nil {
-				o.logger.Error("Failed to serialize event, skipping",
-					zap.String("event_id", evt.ID),
-					zap.String("event_type", evt.Type),
-					zap.Error(err))
-				continue
-			}
-
-			// Publish event using internal publisher
-			ctx, cancel := context.WithTimeout(context.Background(), o.options.PublishTimeout)
-			if err := o.publisher.Publish(ctx, subject, evt.ID, data); err != nil {
-				o.logger.Error("Failed to publish observation event",
-					zap.String("event_id", evt.ID),
-					zap.String("event_type", evt.Type),
-					zap.String("workflow_id", evt.WorkflowID),
-					zap.String("run_id", evt.RunID),
-					zap.Error(err))
-			}
-			cancel()
-		}
+// publishEvent validates, serializes, and publishes a single event.
+// Accepts the caller's context so publish honours both the context deadline and PublishTimeout.
+func (o *observer) publishEvent(ctx context.Context, evt *event.Event) error {
+	if evt == nil {
+		return fmt.Errorf("observer: nil event")
 	}
+
+	if err := evt.Validate(); err != nil {
+		return fmt.Errorf("observer: invalid event: %w", err)
+	}
+
+	subject := event.SubjectForEventType(evt.Type)
+	if subject == "" {
+		return fmt.Errorf("observer: unknown event type %q", evt.Type)
+	}
+
+	data, err := evt.Bytes()
+	if err != nil {
+		return fmt.Errorf("observer: failed to serialize event: %w", err)
+	}
+
+	if err := o.publisher.Publish(ctx, subject, evt.ID, data); err != nil {
+		return fmt.Errorf("observer: failed to publish event: %w", err)
+	}
+
+	return nil
 }
 
-// drainEvents drains any remaining events from the buffer
-func (o *observer) drainEvents() {
-	if o.publisher == nil {
-		o.logger.Warn("Cannot drain events: publisher is nil")
-		return
-	}
-
-	drained := 0
-	for {
-		select {
-		case evt := <-o.eventChan:
-			if evt == nil {
-				// Channel closed
-				if drained > 0 {
-					o.logger.Info("Drained events from buffer",
-						zap.Int("count", drained))
-				}
-				return
-			}
-			// Validate and serialize event
-			if err := evt.Validate(); err != nil {
-				o.logger.Error("Invalid event during drain, skipping",
-					zap.String("event_id", evt.ID),
-					zap.String("event_type", evt.Type),
-					zap.Error(err))
-				continue
-			}
-
-			// Get subject for event type
-			subject := event.SubjectForEventType(evt.Type)
-			if subject == "" {
-				o.logger.Error("Unknown event type during drain, skipping",
-					zap.String("event_id", evt.ID),
-					zap.String("event_type", evt.Type))
-				continue
-			}
-
-			// Serialize event to JSON
-			data, err := evt.Bytes()
-			if err != nil {
-				o.logger.Error("Failed to serialize event during drain, skipping",
-					zap.String("event_id", evt.ID),
-					zap.String("event_type", evt.Type),
-					zap.Error(err))
-				continue
-			}
-
-			// Publish event using internal publisher
-			ctx, cancel := context.WithTimeout(context.Background(), o.options.PublishTimeout)
-			if err := o.publisher.Publish(ctx, subject, evt.ID, data); err != nil {
-				o.logger.Error("Failed to publish event during drain",
-					zap.String("event_id", evt.ID),
-					zap.String("event_type", evt.Type),
-					zap.Error(err))
-			} else {
-				drained++
-			}
-			cancel()
-		default:
-			if drained > 0 {
-				o.logger.Info("Drained events from buffer",
-					zap.Int("count", drained))
-			}
-			return
-		}
-	}
-}
-
-// Close gracefully shuts down the observer
-func (o *observer) Close(ctx context.Context) error {
-	var closeErr error
+// Close marks the observer as closed. Idempotent; safe to call multiple times.
+func (o *observer) Close(_ context.Context) error {
 	o.closeOnce.Do(func() {
 		o.mu.Lock()
 		o.isClosed = true
 		o.mu.Unlock()
-
-		// Signal worker to stop
-		close(o.closed)
-
-		// Close event channel to stop accepting new events
-		close(o.eventChan)
-
-		// Wait for worker to finish with timeout
-		// Use context timeout if provided, otherwise use a default timeout
-		closeCtx := ctx
-		if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-			var cancel context.CancelFunc
-			closeCtx, cancel = context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-		}
-
-		done := make(chan struct{})
-		go func() {
-			o.wg.Wait()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			o.logger.Info("Observer closed gracefully")
-		case <-closeCtx.Done():
-			closeErr = fmt.Errorf("close timeout: %w", closeCtx.Err())
-			o.logger.Warn("Observer close timeout",
-				zap.Error(closeCtx.Err()))
-		}
+		o.logger.Info("Observer closed")
 	})
-
-	return closeErr
+	return nil
 }

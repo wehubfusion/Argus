@@ -19,6 +19,15 @@ type MockJetStream struct {
 	mu            sync.Mutex
 	streams       map[string]*nats.StreamInfo
 	publishedMsgs []PublishedMessage
+	publishErr    error // if non-nil, Publish returns this error
+}
+
+// SetPublishError configures the mock to return err from future Publish calls.
+// Pass nil to reset to normal (success) behaviour.
+func (m *MockJetStream) SetPublishError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.publishErr = err
 }
 
 // NewMockJetStream creates a new mock JetStream context
@@ -63,7 +72,11 @@ func (m *MockJetStream) AddStream(cfg *nats.StreamConfig, opts ...nats.JSOpt) (*
 func (m *MockJetStream) Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
+	if m.publishErr != nil {
+		return nil, m.publishErr
+	}
+
 	// Extract MsgId from options using reflection
 	// The nats.MsgId() function returns a PubOpt that is a function
 	// We need to extract the captured value from the closure

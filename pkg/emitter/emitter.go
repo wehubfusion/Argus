@@ -193,7 +193,7 @@ func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmi
 			zap.String("node_id", params.NodeID),
 			zap.Error(err),
 		)
-		return err
+		return fmt.Errorf("emitter: marshal node.ended output (node_id=%s): %w", params.NodeID, err)
 	}
 
 	pathCtx := PathContext{
@@ -228,16 +228,16 @@ func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmi
 		WithRun(params.RunID).
 		WithNode(params.NodeID).
 		WithData(&event.EndNode{
-			WorkflowID:   params.WorkflowID,
-			RunID:        params.RunID,
-			ClientID:     params.ClientID,
-			ProjectID:    params.ProjectID,
-			NodeID:       params.NodeID,
-			Label:        params.Label,
-			EndedAt:      time.Now().UnixMilli(),
-			Output:       payload,
-			HasError:     params.HasError,
-			ErrorMessage: params.ErrorMessage,
+			WorkflowID:    params.WorkflowID,
+			RunID:         params.RunID,
+			ClientID:      params.ClientID,
+			ProjectID:     params.ProjectID,
+			NodeID:        params.NodeID,
+			Label:         params.Label,
+			EndedAt:       time.Now().UnixMilli(),
+			Output:        payload,
+			HasError:      params.HasError,
+			ErrorMessage:  params.ErrorMessage,
 			ContainsNodes: params.ContainsNodes,
 		})
 
@@ -248,9 +248,13 @@ func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmi
 			zap.String("node_id", params.NodeID),
 			zap.Error(err),
 		)
-		return err
+		return fmt.Errorf("emitter: emit node.ended observation (node_id=%s): %w", params.NodeID, err)
 	}
 
+	if prepErr != nil {
+		// Event emitted successfully, but we fell back to inline due to payload preparation/upload failure.
+		return fmt.Errorf("emitter: emitted node.ended with inline fallback (node_id=%s): %w", params.NodeID, prepErr)
+	}
 	return nil
 }
 
@@ -363,7 +367,11 @@ func (e *ArgusNodeStartEmitter) EmitNodeStart(ctx context.Context, params NodeSt
 			zap.String("node_id", params.NodeID),
 			zap.Error(err),
 		)
-		return err
+		return fmt.Errorf("emitter: emit node.started observation (node_id=%s): %w", params.NodeID, err)
+	}
+	if prepErr != nil {
+		// Event emitted successfully, but we fell back to inline due to payload preparation/upload failure.
+		return fmt.Errorf("emitter: emitted node.started with inline fallback (node_id=%s): %w", params.NodeID, prepErr)
 	}
 	return nil
 }

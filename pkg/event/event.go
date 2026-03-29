@@ -241,6 +241,19 @@ type RunEndedData struct {
 	FailedNodes  int    `json:"failed_nodes"`
 	SkippedNodes int    `json:"skipped_nodes"`
 	QueueLength  int    `json:"queue_length"`
+
+	// CompletedNodeIDs, FailedNodeIDs, SkippedNodeIDs list execution-unit node IDs only
+	// (same notion as orchestrator state lists filtered to top-level execution units).
+	// Observation consumers can reconcile materialized node rows against this manifest.
+	CompletedNodeIDs []string `json:"completed_node_ids,omitempty"`
+	FailedNodeIDs    []string `json:"failed_node_ids,omitempty"`
+	SkippedNodeIDs   []string `json:"skipped_node_ids,omitempty"`
+
+	// TriggerType is the trigger channel from workflow metadata (e.g. "sync", "http").
+	TriggerType string `json:"trigger_type,omitempty"`
+	// SyncCorrelationID is workflow_id + "-" + run_id for synchronous triggers; Hermes registers
+	// the same value. Optional for non-sync runs.
+	SyncCorrelationID string `json:"sync_correlation_id,omitempty"`
 }
 
 type StartWorkflow struct {

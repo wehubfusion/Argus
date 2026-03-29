@@ -115,7 +115,7 @@ Argus emits structured observation events organized by hierarchy:
 
 **Level 2 - Run Lifecycle:**
 * `run.started` - Workflow run started
-* `run.ended` - Workflow run completed
+* `run.ended` - Workflow run completed. `RunEndedData` may include aggregate counts plus optional **execution-unit node ID lists** (`completed_node_ids`, `failed_node_ids`, `skipped_node_ids`), `trigger_type`, and `sync_correlation_id` so observation stores can reconcile materialized nodes before signaling synchronous callers.
 
 **Note on `run.started` payloads**
 
@@ -129,7 +129,7 @@ Downstream consumers can distinguish these by attempting to parse `Data` as `Tri
 **Level 3 - Plugin/Node Lifecycle:**
 * `node.triggered` - Node (execution unit) dispatched by an orchestrator (e.g. Zeus). Payload: `TriggerNode`.
 * `node.started` - Node execution started on a worker. Payload: `StartNode` (includes optional node label and input payload metadata for the node or execution unit).
-* `node.ended`  - Node execution completed on a worker/orchestrator. Payload: `EndNode` (status, timestamps, label, output, error).
+* `node.ended`  - Node execution completed on a worker/orchestrator. Payload: `EndNode` (timestamps, label, output, `has_error` / `error_message`). Nodes that never ran (e.g. downstream embedded nodes after an upstream failure) are **not** observed—emitters should omit `node.ended` for them rather than sending a synthetic terminal event.
 
 ### Event Structure
 
@@ -202,12 +202,17 @@ evt := event.New(event.TypeRunEnded).
     WithWorkflow("wf_abc").
     WithRun("run_xyz").
     WithData(&event.RunEndedData{
-        Status:       "completed",
-        TotalNodes:   10,
-        SuccessNodes: 10,
-        FailedNodes:  0,
-        SkippedNodes: 0,
-        QueueLength:  0,
+        Status:             "completed",
+        TotalNodes:         10,
+        SuccessNodes:       10,
+        FailedNodes:        0,
+        SkippedNodes:       0,
+        QueueLength:        0,
+        CompletedNodeIDs:   []string{"node_a", "node_b"},
+        FailedNodeIDs:      nil,
+        SkippedNodeIDs:     nil,
+        TriggerType:        "sync",
+        SyncCorrelationID:  "wf_abc-run_xyz",
     })
 
 err := obs.Emit(ctx, evt)

@@ -186,6 +186,7 @@ func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmi
 		return nil
 	}
 
+	var payload *event.Payload
 	// Marshal output as-is (no label wrapping)
 	jsonBytes, err := json.Marshal(params.Output)
 	if err != nil {
@@ -205,7 +206,8 @@ func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmi
 		IsInput:    false,
 	}
 
-	payload, prepErr := PreparePayload(ctx, jsonBytes, pathCtx, e.uploader, nil)
+	var prepErr error
+	payload, prepErr = PreparePayload(ctx, jsonBytes, pathCtx, e.uploader, nil)
 	if prepErr != nil {
 		e.logger.Warn("PreparePayload failed, using inline fallback",
 			zap.String("node_id", params.NodeID),

@@ -34,6 +34,8 @@ Argus does **not** store data, compute metrics, or provide query APIs.
 * Minimal public API
 * Safe for use in orchestration runtimes
 
+Successful publishes for **`run.started`**, **`node.triggered`**, **`node.started`**, **`node.ended`**, and **`run.ended`** log at **INFO** as `Argus observation event published` with `event_type`, `workflow_id`, `run_id`, `node_id`, and `dedupe_msg_id` so you can correlate emission order with Athena consumption and detect races.
+
 ---
 
 ## Installation

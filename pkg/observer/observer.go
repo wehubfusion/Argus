@@ -133,16 +133,13 @@ func (o *observer) publishEvent(ctx context.Context, evt *event.Event) error {
 		return fmt.Errorf("observer: failed to publish event: %w", err)
 	}
 
-	switch evt.Type {
-	case event.TypeRunStarted, event.TypeNodeTriggered, event.TypeNodeStarted, event.TypeNodeEnded, event.TypeRunEnded:
-		o.logger.Info("Argus observation event published",
-			zap.String("event_type", evt.Type),
-			zap.String("workflow_id", evt.WorkflowID),
-			zap.String("run_id", evt.RunID),
-			zap.String("node_id", evt.NodeID),
-			zap.String("subject", subject),
-			zap.String("dedupe_msg_id", evt.ID))
-	}
+	o.logger.Info("Argus observation event published",
+		zap.String("event_type", evt.Type),
+		zap.String("workflow_id", evt.WorkflowID),
+		zap.String("run_id", evt.RunID),
+		zap.String("node_id", evt.NodeID),
+		zap.String("subject", subject),
+		zap.String("dedupe_msg_id", evt.ID))
 
 	return nil
 }

@@ -111,22 +111,7 @@ func PreparePayload(ctx context.Context, data []byte, pathCtx PathContext, uploa
 // Mirrors Athena's path convention. Returns empty string if required
 // identifiers are missing. For output: {node_id}.json; for input: {node_id}-input.json.
 func BuildMonitoringPath(pathCtx PathContext) string {
-	if pathCtx.ClientID == "" || pathCtx.ProjectID == "" || pathCtx.WorkflowID == "" || pathCtx.RunID == "" || pathCtx.NodeID == "" {
-		return ""
-	}
-
-	suffix := pathCtx.NodeID + ".json"
-	if pathCtx.IsInput {
-		suffix = pathCtx.NodeID + "-input.json"
-	}
-
-	return fmt.Sprintf("monitoring/%s/%s/%s/%s/%s",
-		pathCtx.ClientID,
-		pathCtx.ProjectID,
-		pathCtx.WorkflowID,
-		pathCtx.RunID,
-		suffix,
-	)
+	return BuildMonitoringPathWithSuffix(pathCtx, ".json")
 }
 
 // NodeEndEmitter emits node.ended observation events with output payload.
@@ -173,6 +158,13 @@ func NewArgusNodeEndEmitter(
 }
 
 // EmitNodeEnd emits a node.ended event with output payload. Best-effort; logs errors, never panics.
+//
+// When the marshaled output matches the CSV/XLSX produce envelope (JSON object with
+// action "produce", fileExtension ".csv" or ".xlsx", and base64 "encoded" that passes
+// sanity checks), the payload is always uploaded to blob as raw bytes at
+// monitoring/.../{node_id}.csv or .xlsx — never inline — so monitoring downloads are
+// native files. If the uploader is nil or upload fails, falls back to PreparePayload
+// (size threshold + .json path) like other outputs.
 func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmitParams) error {
 	if e == nil || e.observer == nil {
 		return nil
@@ -206,17 +198,74 @@ func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmi
 		IsInput:    false,
 	}
 
+	rawProduce, dotExt, isProduceFile := produceRawArtifactFromOutputJSON(jsonBytes)
+
 	var prepErr error
-	payload, prepErr = PreparePayload(ctx, jsonBytes, pathCtx, e.uploader, nil)
-	if prepErr != nil {
-		e.logger.Warn("PreparePayload failed, using inline fallback",
-			zap.String("node_id", params.NodeID),
-			zap.Error(prepErr),
-		)
-		// Fallback: inline
-		payload = &event.Payload{
-			InlineData:    jsonBytes,
-			BlobReference: nil,
+	switch {
+	case isProduceFile && e.uploader != nil:
+		blobPath := BuildMonitoringPathWithSuffix(pathCtx, dotExt)
+		if blobPath == "" {
+			e.logger.Warn("produce file blob path empty (missing ids), using PreparePayload",
+				zap.String("node_id", params.NodeID))
+			payload, prepErr = PreparePayload(ctx, jsonBytes, pathCtx, e.uploader, nil)
+		} else {
+			md := map[string]string{
+				"client_id":   params.ClientID,
+				"project_id":  params.ProjectID,
+				"workflow_id": params.WorkflowID,
+				"run_id":      params.RunID,
+				"node_id":     params.NodeID,
+				"direction":   "output",
+			}
+			if dotExt == ".csv" {
+				md["content_type"] = "text/csv; charset=utf-8"
+				md["artifact"] = "csv_produce"
+			} else {
+				md["content_type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+				md["artifact"] = "xlsx_produce"
+			}
+			url, size, uploadErr := e.uploader.Upload(ctx, blobPath, rawProduce, md)
+			if uploadErr != nil {
+				e.logger.Warn("produce file monitoring blob upload failed, using PreparePayload",
+					zap.String("node_id", params.NodeID),
+					zap.Error(uploadErr),
+				)
+				payload, prepErr = PreparePayload(ctx, jsonBytes, pathCtx, e.uploader, nil)
+			} else {
+				payload = &event.Payload{
+					InlineData: nil,
+					BlobReference: &event.BlobReference{
+						URL:  url,
+						Size: size,
+					},
+				}
+			}
+		}
+		if prepErr != nil {
+			e.logger.Warn("PreparePayload failed after produce branch, using inline fallback",
+				zap.String("node_id", params.NodeID),
+				zap.Error(prepErr),
+			)
+			payload = &event.Payload{
+				InlineData:    jsonBytes,
+				BlobReference: nil,
+			}
+		}
+	default:
+		if isProduceFile && e.uploader == nil {
+			e.logger.Warn("produce file output needs uploader for raw monitoring blob; using PreparePayload",
+				zap.String("node_id", params.NodeID))
+		}
+		payload, prepErr = PreparePayload(ctx, jsonBytes, pathCtx, e.uploader, nil)
+		if prepErr != nil {
+			e.logger.Warn("PreparePayload failed, using inline fallback",
+				zap.String("node_id", params.NodeID),
+				zap.Error(prepErr),
+			)
+			payload = &event.Payload{
+				InlineData:    jsonBytes,
+				BlobReference: nil,
+			}
 		}
 	}
 

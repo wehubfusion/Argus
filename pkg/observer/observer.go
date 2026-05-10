@@ -30,13 +30,24 @@ type Observer interface {
 }
 
 // observer implements the Observer interface with synchronous publishing.
+// It is safe for concurrent use: multiple goroutines may call Emit concurrently.
+// mu guards isClosed for read access in Emit; closeOnce ensures Close() runs
+// its body at most once, making Close() safe to call from multiple goroutines
+// or multiple times (idempotent). The sync.RWMutex allows concurrent Emit
+// calls (read-lock) to proceed without blocking each other, while Close
+// (write-lock) drains in-progress Emit calls before marking the observer
+// closed.
 type observer struct {
 	publisher *nats.Publisher
 	options   Options
 	logger    *zap.Logger
+	// closeOnce ensures the close logic (marking isClosed, logging) runs exactly
+	// once even if Close() is called concurrently from multiple goroutines.
 	closeOnce sync.Once
-	mu        sync.RWMutex
-	isClosed  bool
+	// mu guards isClosed. Emit acquires a read lock; Close acquires a write lock
+	// so it waits for all in-progress Emit calls to finish before closing.
+	mu       sync.RWMutex
+	isClosed bool
 }
 
 // NewObserver creates a new Observer instance.

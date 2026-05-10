@@ -55,8 +55,12 @@ type Event struct {
 	// Raw JSON - consumer parses based on Type
 	Data json.RawMessage `json:"data,omitempty"`
 
-	// marshalErr is set when WithData fails to json.Marshal the payload.
-	// It is intentionally not serialized; Validate() will fail fast if present.
+	// marshalErr captures a json.Marshal failure from WithData. It is private and
+	// intentionally excluded from JSON serialisation (json:"-") so a partially
+	// constructed event does not reach the NATS publisher with a silently missing
+	// Data field. Validate() returns the marshalErr before any field checks so
+	// callers always see the root cause rather than a misleading "missing data"
+	// error. Consumers never see this field; it is a build-time guard for producers.
 	marshalErr error `json:"-"`
 }
 

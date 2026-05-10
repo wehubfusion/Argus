@@ -378,3 +378,5 @@ fmt.Println(evt.Type, evt.ClientID, evt.WorkflowID)
 ### Node payload events merged into lifecycle events (Mar 2026)
 - Removed standalone node input/output event contracts and subject mappings.
 - Input payloads are emitted on `node.started`; output payloads are emitted on `node.ended`.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full history.

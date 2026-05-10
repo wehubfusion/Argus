@@ -30,9 +30,18 @@ type BlobUploader interface {
 	Upload(ctx context.Context, path string, data []byte, metadata map[string]string) (url string, size int64, err error)
 }
 
-// DefaultMaxInlineBytes is the default threshold (500KB) for inline payloads.
-// Matches Athena and Icarus resolver defaults. Payloads larger than this are
-// uploaded to blob storage and a BlobReference is returned.
+// DefaultMaxInlineBytes is the payload size threshold (500 KB) above which
+// PreparePayload offloads data to Azure Blob Storage and returns a BlobReference
+// instead of inline bytes.
+//
+// Cross-package sync requirement: this constant MUST stay in sync with:
+//   - Icarus pkg/resolver: its inline threshold for field-mapping blob downloads.
+//   - Athena: its inline threshold for storing node payloads in Elasticsearch.
+//
+// If you change this value, update ALL THREE locations in the same PR and add a
+// test that verifies the values are equal. A mismatch causes Athena to store
+// BlobReferences when Argus emitted inline data (or vice versa), producing
+// broken payload drill-down in the UI.
 const DefaultMaxInlineBytes = 512000
 
 // PayloadOptions configures PreparePayload behavior.

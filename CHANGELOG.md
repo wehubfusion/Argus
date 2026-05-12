@@ -13,6 +13,15 @@ Each entry is tagged `` `public:` `` or `` `internal:` ``:
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-10
+
+### Added
+
+- `public:` `RunEndedData` gains optional `SyncCompletionProfile string`
+  (`json:"sync_completion_profile,omitempty"`). Wire values: `HTTP_RESPONSE`,
+  `NODE_IO_DETAIL`, or empty (async / legacy). Existing consumers do not need to
+  be updated. (`pkg/event/event.go`)
+
 ## [0.4.0] — 2026-05-03
 
 ### Added

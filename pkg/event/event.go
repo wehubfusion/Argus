@@ -238,7 +238,7 @@ type RunStartedData struct {
 
 // RunEndedData is the data payload for run.ended events.
 type RunEndedData struct {
-	Status       string `json:"status"` // "completed" | "failed" | "partial" | ...
+	Status       string `json:"status"`               // "completed" | "failed" | "partial" | ...
 	ProjectID    string `json:"project_id,omitempty"` // For multi-tenant isolation
 	TotalNodes   int    `json:"total_nodes"`
 	SuccessNodes int    `json:"success_nodes"`
@@ -258,6 +258,9 @@ type RunEndedData struct {
 	// SyncCorrelationID is workflow_id + "-" + run_id for synchronous triggers; Hermes registers
 	// the same value. Optional for non-sync runs.
 	SyncCorrelationID string `json:"sync_correlation_id,omitempty"`
+	// SyncCompletionProfile distinguishes sync completion paths: "HTTP_RESPONSE", "NODE_IO_DETAIL",
+	// or empty for async / legacy. Optional; consumers must treat unknown values as empty.
+	SyncCompletionProfile string `json:"sync_completion_profile,omitempty"`
 }
 
 type StartWorkflow struct {
@@ -316,9 +319,9 @@ type EndNode struct {
 	ErrorMessage string   `json:"error_message,omitempty"`
 
 	// Extended payload fields (optional; used by Athena payload processor)
-	ProjectID          string                          `json:"project_id,omitempty"`           // For blob path and multi-tenant isolation
-	ContainsNodes      []string                        `json:"contains_nodes,omitempty"`       // Node IDs whose outputs are in this unit result (parent + embedded)
-	ExecutionID        string                          `json:"execution_id,omitempty"`         // Execution ID of the unit that produced this result
+	ProjectID      string              `json:"project_id,omitempty"`      // For blob path and multi-tenant isolation
+	ContainsNodes  []string            `json:"contains_nodes,omitempty"`  // Node IDs whose outputs are in this unit result (parent + embedded)
+	ExecutionID    string              `json:"execution_id,omitempty"`    // Execution ID of the unit that produced this result
 	ConsumerInputs map[string]*Payload `json:"consumer_inputs,omitempty"` // consumerNodeID -> pre-built input (inline or blob) from Elysium
 }
 

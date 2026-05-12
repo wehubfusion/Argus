@@ -2,6 +2,7 @@ package tests
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -421,6 +422,55 @@ func TestWithData_RunEndedData(t *testing.T) {
 	if parsed.SuccessNodes != data.SuccessNodes {
 		t.Errorf("Expected success_nodes %d, got %d", data.SuccessNodes, parsed.SuccessNodes)
 	}
+}
+
+func TestRunEndedData_SyncCompletionProfile_JSONRoundTrip(t *testing.T) {
+	t.Run("empty_omitted", func(t *testing.T) {
+		data := &event.RunEndedData{
+			Status:       "completed",
+			TotalNodes:   1,
+			SuccessNodes: 1,
+			FailedNodes:  0,
+			SkippedNodes: 0,
+			QueueLength:  0,
+		}
+		b, err := json.Marshal(data)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(b), "sync_completion_profile") {
+			t.Fatalf("expected sync_completion_profile omitted when empty, got %s", string(b))
+		}
+		var out event.RunEndedData
+		if err := json.Unmarshal(b, &out); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if out.SyncCompletionProfile != "" {
+			t.Errorf("expected empty profile, got %q", out.SyncCompletionProfile)
+		}
+	})
+	t.Run("non_empty_preserved", func(t *testing.T) {
+		data := &event.RunEndedData{
+			Status:                "completed",
+			TotalNodes:            1,
+			SuccessNodes:          1,
+			FailedNodes:           0,
+			SkippedNodes:          0,
+			QueueLength:           0,
+			SyncCompletionProfile: "HTTP_RESPONSE",
+		}
+		b, err := json.Marshal(data)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var out event.RunEndedData
+		if err := json.Unmarshal(b, &out); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if out.SyncCompletionProfile != "HTTP_RESPONSE" {
+			t.Errorf("expected HTTP_RESPONSE, got %q", out.SyncCompletionProfile)
+		}
+	})
 }
 
 func TestWithData_StartNode(t *testing.T) {

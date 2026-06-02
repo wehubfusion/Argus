@@ -130,7 +130,7 @@ func (o *observer) publishEvent(ctx context.Context, evt *event.Event) error {
 		return fmt.Errorf("observer: invalid event: %w", err)
 	}
 
-	subject := event.SubjectForEventType(evt.Type)
+	subject := event.SubjectForEventTypeWithEnv(evt.Type, evt.EnvironmentID)
 	if subject == "" {
 		return fmt.Errorf("observer: unknown event type %q", evt.Type)
 	}

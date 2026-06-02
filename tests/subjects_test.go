@@ -68,6 +68,20 @@ func TestSubjectForEventType_EmptyString(t *testing.T) {
 	}
 }
 
+func TestSubjectForEventTypeWithEnv(t *testing.T) {
+	got := event.SubjectForEventTypeWithEnv(event.TypeRunStarted, "acme")
+	want := event.SubjectRunStarted + ".acme"
+	if got != want {
+		t.Errorf("expected %q, got %q", want, got)
+	}
+	if event.SubjectForEventTypeWithEnv(event.TypeRunStarted, "") != event.SubjectRunStarted {
+		t.Errorf("empty env should return base subject")
+	}
+	if event.SubjectForEventTypeWithEnv("unknown", "acme") != "" {
+		t.Errorf("unknown type should return empty")
+	}
+}
+
 func TestSubjectForEventType_CaseSensitive(t *testing.T) {
 	// Verify that event types are case-sensitive
 	result := event.SubjectForEventType("RUN.STARTED") // Wrong case

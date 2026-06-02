@@ -68,3 +68,13 @@ func SubjectForEventType(eventType string) string {
 		return ""
 	}
 }
+
+// SubjectForEventTypeWithEnv returns the NATS subject for an event type, appending
+// .<environment_id> when environmentID is non-empty (Phase C observation routing).
+func SubjectForEventTypeWithEnv(eventType, environmentID string) string {
+	base := SubjectForEventType(eventType)
+	if base == "" || environmentID == "" {
+		return base
+	}
+	return base + "." + environmentID
+}

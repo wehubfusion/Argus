@@ -50,6 +50,7 @@ type Event struct {
 	WorkflowID string `json:"workflow_id,omitempty"`
 	RunID      string `json:"run_id,omitempty"`
 	NodeID     string `json:"node_id,omitempty"`
+	EnvironmentID string `json:"environment_id,omitempty"` // Tenant environment (empty = default)
 
 	// === Event-Specific Data ===
 	// Raw JSON - consumer parses based on Type
@@ -97,6 +98,12 @@ func (e *Event) WithRun(runID string) *Event {
 // WithNode sets the node_id field.
 func (e *Event) WithNode(nodeID string) *Event {
 	e.NodeID = nodeID
+	return e
+}
+
+// WithEnvironment sets the tenant environment_id on the envelope (used for observation subject suffixing).
+func (e *Event) WithEnvironment(environmentID string) *Event {
+	e.EnvironmentID = environmentID
 	return e
 }
 
@@ -211,8 +218,9 @@ type TriggerWorkflow struct {
 	WorkflowID   string   `json:"workflow_id"`
 	RunID        string   `json:"run_id"`
 	ClientID     string   `json:"client_id"`
-	ProjectID    string   `json:"project_id,omitempty"` // For blob path and multi-tenant isolation
-	Type         string   `json:"type"`
+	ProjectID     string   `json:"project_id,omitempty"`     // For blob path and multi-tenant isolation
+	EnvironmentID string   `json:"environment_id,omitempty"` // Tenant environment (empty = default)
+	Type          string   `json:"type"`
 	Payload      *Payload `json:"payload"`
 	StartedAt    int64    `json:"started_at"`
 	EndedAt      int64    `json:"ended_at"`
@@ -232,15 +240,17 @@ type TriggerInfo struct {
 // It is distinct from TriggerWorkflow (also sent with run.started) which represents trigger enqueueing.
 type RunStartedData struct {
 	TotalNodes  int          `json:"total_nodes"`
-	ProjectID   string       `json:"project_id,omitempty"` // For blob path and multi-tenant isolation
-	TriggerInfo *TriggerInfo `json:"trigger_info,omitempty"`
+	ProjectID     string       `json:"project_id,omitempty"`     // For blob path and multi-tenant isolation
+	EnvironmentID string       `json:"environment_id,omitempty"` // Tenant environment (empty = default)
+	TriggerInfo   *TriggerInfo `json:"trigger_info,omitempty"`
 }
 
 // RunEndedData is the data payload for run.ended events.
 type RunEndedData struct {
 	Status       string `json:"status"`               // "completed" | "failed" | "partial" | ...
-	ProjectID    string `json:"project_id,omitempty"` // For multi-tenant isolation
-	TotalNodes   int    `json:"total_nodes"`
+	ProjectID     string `json:"project_id,omitempty"`     // For multi-tenant isolation
+	EnvironmentID string `json:"environment_id,omitempty"` // Tenant environment (empty = default)
+	TotalNodes    int    `json:"total_nodes"`
 	SuccessNodes int    `json:"success_nodes"`
 	FailedNodes  int    `json:"failed_nodes"`
 	SkippedNodes int    `json:"skipped_nodes"`
@@ -288,10 +298,11 @@ type TriggerNode struct {
 	WorkflowID string   `json:"workflow_id"`
 	RunID      string   `json:"run_id"`
 	ClientID   string   `json:"client_id"`
-	ProjectID  string   `json:"project_id,omitempty"` // For blob path and multi-tenant isolation
-	NodeID     string   `json:"node_id"`
-	Label      string   `json:"label,omitempty"` // Human-readable node label from execution plan (e.g. "ESR", "Append to User.csv")
-	Type       string   `json:"type"`
+	ProjectID     string   `json:"project_id,omitempty"`     // For blob path and multi-tenant isolation
+	EnvironmentID string   `json:"environment_id,omitempty"` // Tenant environment (empty = default)
+	NodeID        string   `json:"node_id"`
+	Label         string   `json:"label,omitempty"` // Human-readable node label from execution plan (e.g. "ESR", "Append to User.csv")
+	Type          string   `json:"type"`
 	Payload    *Payload `json:"payload"`
 	StartedAt  int64    `json:"started_at"`
 }
@@ -300,11 +311,12 @@ type StartNode struct {
 	WorkflowID string   `json:"workflow_id"`
 	RunID      string   `json:"run_id"`
 	ClientID   string   `json:"client_id"`
-	ProjectID  string   `json:"project_id,omitempty"` // For blob path and multi-tenant isolation
-	NodeID     string   `json:"node_id"`
-	Label      string   `json:"label,omitempty"` // Human-readable node label from execution plan
-	StartedAt  int64    `json:"started_at"`
-	Input      *Payload `json:"input"`
+	ProjectID     string   `json:"project_id,omitempty"`     // For blob path and multi-tenant isolation
+	EnvironmentID string   `json:"environment_id,omitempty"` // Tenant environment (empty = default)
+	NodeID        string   `json:"node_id"`
+	Label         string   `json:"label,omitempty"` // Human-readable node label from execution plan
+	StartedAt     int64    `json:"started_at"`
+	Input         *Payload `json:"input"`
 }
 type EndNode struct {
 	WorkflowID   string   `json:"workflow_id"`
@@ -320,6 +332,7 @@ type EndNode struct {
 
 	// Extended payload fields (optional; used by Athena payload processor)
 	ProjectID      string              `json:"project_id,omitempty"`      // For blob path and multi-tenant isolation
+	EnvironmentID  string              `json:"environment_id,omitempty"`  // Tenant environment (empty = default)
 	ContainsNodes  []string            `json:"contains_nodes,omitempty"`  // Node IDs whose outputs are in this unit result (parent + embedded)
 	ExecutionID    string              `json:"execution_id,omitempty"`    // Execution ID of the unit that produced this result
 	ConsumerInputs map[string]*Payload `json:"consumer_inputs,omitempty"` // consumerNodeID -> pre-built input (inline or blob) from Elysium

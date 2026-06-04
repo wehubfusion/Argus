@@ -299,7 +299,6 @@ type TriggerNode struct {
 	RunID      string   `json:"run_id"`
 	ClientID   string   `json:"client_id"`
 	ProjectID     string   `json:"project_id,omitempty"`     // For blob path and multi-tenant isolation
-	EnvironmentID string   `json:"environment_id,omitempty"` // Tenant environment (empty = default)
 	NodeID        string   `json:"node_id"`
 	Label         string   `json:"label,omitempty"` // Human-readable node label from execution plan (e.g. "ESR", "Append to User.csv")
 	Type          string   `json:"type"`
@@ -312,7 +311,6 @@ type StartNode struct {
 	RunID      string   `json:"run_id"`
 	ClientID   string   `json:"client_id"`
 	ProjectID     string   `json:"project_id,omitempty"`     // For blob path and multi-tenant isolation
-	EnvironmentID string   `json:"environment_id,omitempty"` // Tenant environment (empty = default)
 	NodeID        string   `json:"node_id"`
 	Label         string   `json:"label,omitempty"` // Human-readable node label from execution plan
 	StartedAt     int64    `json:"started_at"`
@@ -332,7 +330,6 @@ type EndNode struct {
 
 	// Extended payload fields (optional; used by Athena payload processor)
 	ProjectID      string              `json:"project_id,omitempty"`      // For blob path and multi-tenant isolation
-	EnvironmentID  string              `json:"environment_id,omitempty"`  // Tenant environment (empty = default)
 	ContainsNodes  []string            `json:"contains_nodes,omitempty"`  // Node IDs whose outputs are in this unit result (parent + embedded)
 	ExecutionID    string              `json:"execution_id,omitempty"`    // Execution ID of the unit that produced this result
 	ConsumerInputs map[string]*Payload `json:"consumer_inputs,omitempty"` // consumerNodeID -> pre-built input (inline or blob) from Elysium

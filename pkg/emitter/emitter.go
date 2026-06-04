@@ -133,7 +133,6 @@ type NodeEndEmitter interface {
 type NodeEndEmitParams struct {
 	ClientID      string
 	ProjectID     string
-	EnvironmentID string
 	WorkflowID    string
 	RunID         string
 	NodeID        string
@@ -288,13 +287,11 @@ func (e *ArgusNodeEndEmitter) EmitNodeEnd(ctx context.Context, params NodeEndEmi
 		WithWorkflow(params.WorkflowID).
 		WithRun(params.RunID).
 		WithNode(params.NodeID).
-		WithEnvironment(params.EnvironmentID).
 		WithData(&event.EndNode{
 			WorkflowID:    params.WorkflowID,
 			RunID:         params.RunID,
 			ClientID:      params.ClientID,
 			ProjectID:     params.ProjectID,
-			EnvironmentID: params.EnvironmentID,
 			NodeID:        params.NodeID,
 			Label:         params.Label,
 			EndedAt:       time.Now().UnixMilli(),
@@ -327,7 +324,6 @@ type NodeStartEmitter interface {
 type NodeStartEmitParams struct {
 	ClientID      string
 	ProjectID     string
-	EnvironmentID string
 	WorkflowID    string
 	RunID      string
 	NodeID     string
@@ -409,13 +405,11 @@ func (e *ArgusNodeStartEmitter) EmitNodeStart(ctx context.Context, params NodeSt
 		WithWorkflow(params.WorkflowID).
 		WithRun(params.RunID).
 		WithNode(params.NodeID).
-		WithEnvironment(params.EnvironmentID).
 		WithData(&event.StartNode{
 			WorkflowID:    params.WorkflowID,
 			RunID:         params.RunID,
 			ClientID:      params.ClientID,
 			ProjectID:     params.ProjectID,
-			EnvironmentID: params.EnvironmentID,
 			NodeID:        params.NodeID,
 			Label:      label,
 			StartedAt:  time.Now().UnixMilli(),

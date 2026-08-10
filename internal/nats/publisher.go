@@ -3,10 +3,15 @@ package nats
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/wehubfusion/Argus/pkg/event"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -85,7 +90,11 @@ func (p *Publisher) ensureStream() error {
 // nats.Context(publishCtx) passes the context into the JetStream ack-wait select
 // loop (RequestMsgWithContext), so cancellation is handled natively by the NATS
 // client rather than via a wrapper goroutine.
-func (p *Publisher) Publish(ctx context.Context, subject, msgID string, data []byte) error {
+//
+// The caller's span (if any) is injected as a W3C traceparent into the message header, and the
+// publish itself is wrapped in its own SpanKindProducer span — so a consumer that extracts the
+// header continues the emitting service's trace instead of starting a disconnected root.
+func (p *Publisher) Publish(ctx context.Context, subject, msgID string, data []byte) (err error) {
 	if subject == "" {
 		return fmt.Errorf("publisher: subject cannot be empty")
 	}
@@ -96,8 +105,20 @@ func (p *Publisher) Publish(ctx context.Context, subject, msgID string, data []b
 		return fmt.Errorf("publisher: data cannot be empty")
 	}
 
+	ctx, span := otel.Tracer("argus/nats-publisher").Start(ctx, subject, trace.WithSpanKind(trace.SpanKindProducer), trace.WithAttributes(
+		attribute.String("messaging.system", "nats"),
+		attribute.String("messaging.destination.name", subject),
+		attribute.String("messaging.message.id", msgID),
+	))
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+		}
+		span.End()
+	}()
+
 	// Fast-path: reject immediately if the caller's context is already done.
-	if err := ctx.Err(); err != nil {
+	if err = ctx.Err(); err != nil {
 		return fmt.Errorf("publisher: context already done: %w", err)
 	}
 
@@ -107,7 +128,10 @@ func (p *Publisher) Publish(ctx context.Context, subject, msgID string, data []b
 	publishCtx, cancel := context.WithTimeout(ctx, p.config.PublishTimeout)
 	defer cancel()
 
-	ack, err := p.js.Publish(subject, data,
+	msg := &nats.Msg{Subject: subject, Data: data, Header: nats.Header{}}
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(http.Header(msg.Header)))
+
+	ack, err := p.js.PublishMsg(msg,
 		nats.MsgId(msgID),
 		nats.Context(publishCtx),
 	)
